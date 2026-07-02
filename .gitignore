@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+
+# Secrets — the agent holds the DB credentials locally; never commit them.
+.env
+.env.*
+!.env.example

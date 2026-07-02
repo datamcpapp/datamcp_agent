@@ -1,0 +1,44 @@
+{
+  "name": "@datamcp/agent",
+  "version": "0.1.0",
+  "description": "DataMCP self-hosted agent — safe, read-only access to databases inside private networks",
+  "main": "dist/index.js",
+  "bin": {
+    "datamcp-agent": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "dev:qa": "DATAMCP_STAGE=qa ts-node src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test:guard": "ts-node src/security/read-only-guard.test.ts",
+    "lint": "eslint src --ext .ts"
+  },
+  "keywords": [
+    "datamcp",
+    "agent",
+    "database",
+    "private-network",
+    "read-only",
+    "mcp"
+  ],
+  "author": "DataMCP",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "pg": "^8.13.1",
+    "socket.io-client": "^4.8.1",
+    "uuid": "^11.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.10",
+    "@types/uuid": "^10.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
