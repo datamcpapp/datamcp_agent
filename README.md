@@ -4,61 +4,66 @@ Self-hosted agent for **safe access to databases inside private networks**.
 
 The agent runs inside your network, holds your database credentials **locally**, and
 connects **outbound** to the DataMCP cloud over a websocket. Your database is never
-exposed to the internet, and no inbound firewall rules are required. The cloud sends
-SQL, the agent runs it locally, and returns the rows.
+exposed to the internet and no inbound firewall rules are required.
+
+## Usage
+
+```bash
+npx datamcp <policy> <database-url> [options]
+```
+
+The **policy** is the agent's local enforcement ceiling:
+
+| Policy | Aliases | Allows |
+| --- | --- | --- |
+| `ro`  | `read-only`         | reads only — every statement runs in a `READ ONLY` transaction |
+| `rwd` | `read-write-delete` | reads + `INSERT`/`UPDATE`/`DELETE`; DDL & multi-statement blocked |
+| `fa`  | `full-access`       | unrestricted — the database role is the only limit |
+
+```bash
+# read-only agent for a local database
+npx datamcp ro postgres://user:pass@localhost:5432/app
+
+# read/write/delete, named, pointed at the QA cloud
+DATAMCP_STAGE=qa npx datamcp rwd localhost:5432/app --name analytics \
+  --connection-id conn_… --api-key agent_…
+
+# prove the policy holds on YOUR database, then exit (no cloud needed)
+npx datamcp ro postgres://…/app --selftest
+```
 
 ## Security model
 
-Every query the agent runs is, by default, enforced read-only in **two layers** —
-the same defense used on the cloud's direct path:
+The policy is enforced right at the database connection, **independent of and in
+addition to** whatever the cloud MCP link permits — effective access is the
+intersection, so the agent can never exceed its ceiling. Under `ro` and `rwd`:
 
-1. **Text guard** (`src/security/read-only-guard.ts`) — blocks writes, DDL,
-   multi-statements, and dangerous functions (including quoted-identifier evasions
-   like `"dblink_exec"(...)` and outbound `dblink*` calls that would escape the
-   transaction).
-2. **`BEGIN TRANSACTION READ ONLY`** — a hard, database-level backstop: PostgreSQL
-   rejects every write path regardless of what the text guard caught.
+1. **Text guard** — blocks DDL, multi-statement, `SELECT INTO`, and dangerous
+   functions (including quoted-identifier evasions like `"dblink_exec"(…)` and
+   outbound `dblink*` calls that would escape the transaction).
+2. **`BEGIN TRANSACTION READ ONLY`** for every read — PostgreSQL rejects any write
+   inside it, including one a function called from a `SELECT` attempts. So a
+   `SELECT malicious_writer()` cannot write even on a `rwd` agent.
 
-`SET LOCAL statement_timeout` caps runaway/DoS queries. Set `AGENT_READ_ONLY=false`
-only for an explicitly read-write connection.
+`SET LOCAL statement_timeout` caps runaway/DoS queries.
 
-## Quick start
+Run `--selftest` to see all of this verified against your own database.
+
+## Options
+
+`--name`, `--stage`, `--connection-id`, `--api-key`, `--anon-token`, `--cloud-url`,
+`--statement-timeout <ms>`, `--selftest`, `--help`, `--version`. Any of these can
+also be set via env (see `.env.example`); CLI flags win.
+
+## Development
 
 ```bash
 npm install
-cp .env.example .env      # fill in connection id, api key, DATABASE_URL
-npm run build
-npm start
-```
-
-Point at the QA cloud while testing (mirrors the server/dashboard stage convention):
-
-```bash
-DATAMCP_STAGE=qa npm run dev
-```
-
-### Docker
-
-```bash
-docker build -t datamcp-agent .
-docker run -d --name datamcp-agent --env-file .env --restart unless-stopped datamcp-agent
-```
-
-## Configuration
-
-See [`.env.example`](./.env.example). Key vars: `DATAMCP_STAGE` (production | qa |
-staging | development), `DATAMCP_CONNECTION_ID`, `DATAMCP_API_KEY` (or
-`DATAMCP_ANON_TOKEN`), `DATABASE_URL`, `AGENT_READ_ONLY`.
-
-## Tests
-
-```bash
-npm run test:guard    # asserts the read-only guard blocks known bypasses
 npm run typecheck
+npm run test:policy      # unit tests for the policy engine
+npm run build            # -> dist/
+node dist/index.js ro postgres://…/app --selftest
 ```
 
-## Protocol
-
-Talks to the server `agent-tunnel` module on the `/agents` websocket namespace.
-Wire types live in `src/tunnel/protocol.ts` and must stay in sync with
-`nestjs-app/src/modules/agent-tunnel/types.ts`.
+Wire protocol (`src/tunnel/protocol.ts`) matches the server `agent-tunnel` module
+on the `/agents` websocket namespace.

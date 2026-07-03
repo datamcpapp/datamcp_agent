@@ -35,7 +35,7 @@ export class TunnelClient {
 
     // Auth matches the gateway handshake: apiKey OR anonToken, plus connectionId.
     const auth: Record<string, string> = {
-      connectionId: this.config.connectionId,
+      connectionId: this.config.connectionId ?? '',
       agentVersion: AGENT_VERSION,
       hostname: os.hostname(),
     };

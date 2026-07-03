@@ -1,22 +1,21 @@
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 
 import { AgentConfig } from '../config';
 import { Logger } from '../logger';
-import { checkReadOnly } from '../security/read-only-guard';
+import { decide } from '../policy';
 import {
   AgentExecuteQueryRequest,
   AgentExecuteQueryResult,
 } from '../tunnel/protocol';
 
 /**
- * Runs SQL against the local (private) database on behalf of the cloud.
+ * Runs SQL against the local (private) database, enforcing the agent's policy.
  *
- * Read-only enforcement is layered exactly like the cloud path:
- *   1. text guard (checkReadOnly) — cheap, blocks obvious writes & escapes
- *   2. `BEGIN TRANSACTION READ ONLY` — hard, database-level backstop that
- *      rejects EVERY write (writable CTE, SELECT INTO, unparseable DML, ...)
- *      regardless of what the text guard did or did not catch.
- * `SET LOCAL statement_timeout` caps runaway/DoS queries.
+ * The policy decides per-statement whether it is allowed and whether it runs
+ * inside `BEGIN TRANSACTION READ ONLY`. The read-only transaction is the hard,
+ * database-level control: PostgreSQL rejects every write path inside it —
+ * writable CTEs, SELECT INTO, unparseable DML, or a write attempted by a
+ * function called from a SELECT. `SET LOCAL statement_timeout` caps DoS.
  */
 export class DbExecutor {
   private readonly pool: Pool;
@@ -26,55 +25,44 @@ export class DbExecutor {
     private readonly logger: Logger,
   ) {
     const url = new URL(config.databaseUrl);
-    // Accept self-signed certs the way the cloud executor does; still encrypt.
     const sslmode = url.searchParams.get('sslmode');
     this.pool = new Pool({
       connectionString: config.databaseUrl,
-      ssl:
-        sslmode === 'disable'
-          ? undefined
-          : { rejectUnauthorized: false },
+      ssl: sslmode === 'disable' ? undefined : { rejectUnauthorized: false },
       max: 5,
       idleTimeoutMillis: 30_000,
     });
   }
 
-  async verifyConnectivity(): Promise<void> {
+  async verifyConnectivity(): Promise<{ user: string; database: string }> {
     const client = await this.pool.connect();
     try {
       const r = await client.query('SELECT current_user, current_database()');
-      this.logger.info(
-        `DB reachable as ${r.rows[0].current_user}/${r.rows[0].current_database}`,
-      );
+      return { user: r.rows[0].current_user, database: r.rows[0].current_database };
     } finally {
       client.release();
     }
   }
 
-  async execute(
-    req: AgentExecuteQueryRequest,
-  ): Promise<AgentExecuteQueryResult> {
+  async execute(req: AgentExecuteQueryRequest): Promise<AgentExecuteQueryResult> {
     const started = Date.now();
+    const decision = decide(this.config.policy, req.sql);
 
-    if (this.config.readOnly) {
-      const guard = checkReadOnly(req.sql);
-      if (!guard.allowed) {
-        this.logger.warn(`Blocked by read-only guard: ${guard.reason}`);
-        return {
-          queryId: req.queryId,
-          success: false,
-          error: `Rejected by agent read-only guard: ${guard.reason}`,
-          duration: Date.now() - started,
-        };
-      }
+    if (!decision.allow) {
+      this.logger.warn(`Blocked by policy (${this.config.policy}): ${decision.reason}`);
+      return {
+        queryId: req.queryId,
+        success: false,
+        error: `Rejected by agent policy "${this.config.policy}": ${decision.reason}`,
+        duration: Date.now() - started,
+      };
     }
 
     const client = await this.pool.connect();
     const timeoutMs = clampTimeout(req.timeoutMs, this.config.statementTimeoutMs);
     let inReadOnlyTx = false;
-
     try {
-      if (this.config.readOnly) {
+      if (decision.readOnlyTx) {
         await client.query('BEGIN TRANSACTION READ ONLY');
         inReadOnlyTx = true;
         await client.query(`SET LOCAL statement_timeout = ${timeoutMs}`);
@@ -82,15 +70,9 @@ export class DbExecutor {
         await client.query(`SET statement_timeout = ${timeoutMs}`);
       }
 
-      const result = await client.query({
-        text: req.sql,
-        values: req.params ?? [],
-      });
+      const result = await client.query({ text: req.sql, values: req.params ?? [] });
 
-      if (inReadOnlyTx) {
-        await client.query('COMMIT');
-        inReadOnlyTx = false;
-      }
+      if (inReadOnlyTx) { await client.query('COMMIT'); inReadOnlyTx = false; }
 
       return {
         queryId: req.queryId,
@@ -103,16 +85,11 @@ export class DbExecutor {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       this.logger.warn(`Query failed: ${message}`);
-      return {
-        queryId: req.queryId,
-        success: false,
-        error: message,
-        duration: Date.now() - started,
-      };
+      return { queryId: req.queryId, success: false, error: message, duration: Date.now() - started };
     } finally {
       if (inReadOnlyTx) {
         await client.query('ROLLBACK').catch(() => undefined);
-      } else if (!this.config.readOnly) {
+      } else if (!decision.readOnlyTx) {
         await client.query('RESET statement_timeout').catch(() => undefined);
       }
       client.release();
