@@ -1,0 +1,50 @@
+{
+  "name": "@datamcp/agent",
+  "version": "1.0.0",
+  "description": "DataMCP self-hosted agent for private database access",
+  "main": "dist/index.js",
+  "bin": {
+    "datamcp-agent": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "dev:watch": "nodemon --watch src --exec ts-node src/index.ts",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "datamcp",
+    "agent",
+    "database",
+    "private-network"
+  ],
+  "author": "DataMCP",
+  "license": "MIT",
+  "dependencies": {
+    "socket.io-client": "^4.8.1",
+    "pg": "^8.13.1",
+    "uuid": "^11.0.4",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.10",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.7.3",
+    "ts-node": "^10.9.2",
+    "nodemon": "^3.1.9",
+    "eslint": "^9.18.0",
+    "prettier": "^3.4.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

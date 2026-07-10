@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  datamcp-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: datamcp-agent
+    image: datamcp/agent:latest
+    
+    # Environment variables
+    environment:
+      # Required: Your agent API key from DataMCP dashboard
+      - DATAMCP_API_KEY=${DATAMCP_API_KEY}
+      
+      # Optional: DataMCP cloud URL (default: wss://api.datamcp.com)
+      - DATAMCP_CLOUD_URL=${DATAMCP_CLOUD_URL:-wss://api.datamcp.com}
+      
+      # Optional: Friendly name for the agent
+      - AGENT_NAME=${AGENT_NAME:-Docker Agent}
+      
+      # Optional: Heartbeat interval in milliseconds (default: 30000)
+      - HEARTBEAT_INTERVAL=${HEARTBEAT_INTERVAL:-30000}
+      
+      # Optional: Log level (debug, info, warn, error)
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      
+      # Optional: HTTP port for health checks (default: 3000)
+      - PORT=${PORT:-3000}
+    
+    # Health checks
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Network
+    networks:
+      - datamcp-network
+
+networks:
+  datamcp-network:
+    driver: bridge
