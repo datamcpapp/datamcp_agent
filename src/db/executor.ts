@@ -44,6 +44,86 @@ export class DbExecutor {
     }
   }
 
+  async extractSchema(): Promise<unknown> {
+    const client = await this.pool.connect();
+    try {
+      const tables = await client.query(`
+        SELECT table_schema, table_name
+        FROM information_schema.tables
+        WHERE table_type = 'BASE TABLE'
+          AND table_schema NOT IN ('pg_catalog', 'information_schema')
+        ORDER BY table_schema, table_name
+      `);
+      const columns = await client.query(`
+        SELECT
+          table_schema,
+          table_name,
+          column_name,
+          data_type,
+          is_nullable,
+          column_default
+        FROM information_schema.columns
+        WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+        ORDER BY table_schema, table_name, ordinal_position
+      `);
+      const primaryKeys = await client.query(`
+        SELECT
+          tc.table_schema,
+          tc.table_name,
+          kcu.column_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+         AND tc.table_schema = kcu.table_schema
+         AND tc.table_name = kcu.table_name
+        WHERE tc.constraint_type = 'PRIMARY KEY'
+          AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
+        ORDER BY tc.table_schema, tc.table_name, kcu.ordinal_position
+      `);
+
+      const primaryKeyMap = new Map<string, string[]>();
+      for (const row of primaryKeys.rows) {
+        const key = `${row.table_schema}.${row.table_name}`;
+        primaryKeyMap.set(key, [...(primaryKeyMap.get(key) ?? []), row.column_name]);
+      }
+
+      return {
+        tables: tables.rows.map((table) => {
+          const key = `${table.table_schema}.${table.table_name}`;
+          return {
+            schema: table.table_schema,
+            name: table.table_name,
+            columns: columns.rows
+              .filter(
+                (column) =>
+                  column.table_schema === table.table_schema &&
+                  column.table_name === table.table_name,
+              )
+              .map((column) => ({
+                name: column.column_name,
+                type: column.data_type,
+                nullable: column.is_nullable === 'YES',
+                default: column.column_default,
+                comment: null,
+              })),
+            primary_keys: primaryKeyMap.get(key) ?? [],
+            foreign_keys: [],
+            indexes: [],
+            constraints: [],
+          };
+        }),
+        metadata: {
+          extracted_at: new Date().toISOString(),
+          database_type: 'postgresql',
+          total_tables: tables.rows.length,
+          total_columns: columns.rows.length,
+        },
+      };
+    } finally {
+      client.release();
+    }
+  }
+
   async execute(req: AgentExecuteQueryRequest): Promise<AgentExecuteQueryResult> {
     const started = Date.now();
     const decision = decide(this.config.policy, req.sql);

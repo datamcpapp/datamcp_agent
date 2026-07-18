@@ -23,6 +23,29 @@ export interface AgentExecuteQueryResult {
   duration: number;
 }
 
+export interface AgentExtractSchemaRequest {
+  requestId: string;
+}
+
+export interface AgentExtractSchemaResult {
+  requestId: string;
+  success: boolean;
+  schema?: unknown;
+  error?: string;
+  duration: number;
+}
+
+export interface AgentHealthCheckRequest {
+  requestId: string;
+}
+
+export interface AgentHealthCheckResult {
+  requestId: string;
+  success: boolean;
+  error?: string;
+  duration: number;
+}
+
 export interface AgentHeartbeat {
   version: string;
   metadata?: {

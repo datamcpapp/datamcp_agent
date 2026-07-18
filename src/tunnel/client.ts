@@ -6,7 +6,9 @@ import { DbExecutor } from '../db/executor';
 import { Logger } from '../logger';
 import {
   AgentExecuteQueryRequest,
+  AgentExtractSchemaRequest,
   AgentHeartbeat,
+  AgentHealthCheckRequest,
   ConnectedEvent,
 } from './protocol';
 
@@ -67,6 +69,14 @@ export class TunnelClient {
       void this.handleQuery(socket, req);
     });
 
+    socket.on('extract_schema', (req: AgentExtractSchemaRequest) => {
+      void this.handleSchema(socket, req);
+    });
+
+    socket.on('health_check', (req: AgentHealthCheckRequest) => {
+      void this.handleHealth(socket, req);
+    });
+
     socket.on('error', (payload: { message?: string }) => {
       this.logger.error(`Cloud error: ${payload?.message ?? 'unknown'}`);
     });
@@ -88,6 +98,51 @@ export class TunnelClient {
     this.logger.debug(`execute_query ${req.queryId}: ${req.sql.slice(0, 120)}`);
     const result = await this.executor.execute(req);
     socket.emit('query_result', result);
+  }
+
+  private async handleSchema(
+    socket: Socket,
+    req: AgentExtractSchemaRequest,
+  ): Promise<void> {
+    const started = Date.now();
+    try {
+      const schema = await this.executor.extractSchema();
+      socket.emit('schema_result', {
+        requestId: req.requestId,
+        success: true,
+        schema,
+        duration: Date.now() - started,
+      });
+    } catch (err) {
+      socket.emit('schema_result', {
+        requestId: req.requestId,
+        success: false,
+        error: err instanceof Error ? err.message : 'Unknown error',
+        duration: Date.now() - started,
+      });
+    }
+  }
+
+  private async handleHealth(
+    socket: Socket,
+    req: AgentHealthCheckRequest,
+  ): Promise<void> {
+    const started = Date.now();
+    try {
+      await this.executor.verifyConnectivity();
+      socket.emit('health_check_result', {
+        requestId: req.requestId,
+        success: true,
+        duration: Date.now() - started,
+      });
+    } catch (err) {
+      socket.emit('health_check_result', {
+        requestId: req.requestId,
+        success: false,
+        error: err instanceof Error ? err.message : 'Unknown error',
+        duration: Date.now() - started,
+      });
+    }
   }
 
   private startHeartbeat(socket: Socket): void {
