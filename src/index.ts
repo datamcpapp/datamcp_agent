@@ -10,9 +10,20 @@ import { TunnelClient } from './tunnel/client';
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
 
-  if (parsed.command === 'help') { console.log(HELP); return; }
-  if (parsed.command === 'version') { console.log(versionString()); return; }
-  if (parsed.error) { console.error(`Error: ${parsed.error}\n\nRun \`datamcp --help\` for usage.`); process.exit(2); }
+  if (parsed.command === 'help') {
+    console.log(HELP);
+    return;
+  }
+  if (parsed.command === 'version') {
+    console.log(versionString());
+    return;
+  }
+  if (parsed.error) {
+    console.error(
+      `Error: ${parsed.error}\n\nRun \`datamcp --help\` for usage.`,
+    );
+    process.exit(2);
+  }
 
   const config = resolveConfig(parsed.cli);
   const logger = new Logger(config.logLevel);
@@ -23,22 +34,28 @@ async function main(): Promise<void> {
     process.exit(ok ? 0 : 1);
   }
 
-  logger.info(`Starting ${config.agentName} — policy=${config.policy} (${POLICY_LABEL[config.policy]}), stage=${config.stage}`);
+  logger.info(
+    `Starting ${config.agentName}: policy=${config.policy} (${POLICY_LABEL[config.policy]}), stage=${config.stage}`,
+  );
 
   const executor = new DbExecutor(config, logger);
   try {
     const info = await executor.verifyConnectivity();
     logger.info(`DB reachable as ${info.user}/${info.database}`);
   } catch (err) {
-    logger.error(`Cannot reach database: ${err instanceof Error ? err.message : err}`);
+    logger.error(
+      `Cannot reach database: ${err instanceof Error ? err.message : err}`,
+    );
     process.exit(1);
   }
 
-  // Cloud connection requires credentials. Without them, guide the user.
-  if (!config.connectionId || !(config.apiKey || config.anonToken)) {
+  // Cloud connection requires either a registered credential or auto-bootstrap.
+  if (
+    config.connectionId &&
+    !(config.apiKey || config.anonToken || config.agentToken)
+  ) {
     logger.error(
-      'Missing cloud credentials. Provide --connection-id and --api-key ' +
-      '(or --anon-token), or run with --selftest to validate the policy locally.',
+      'Missing cloud credential. Provide --api-key, --anon-token, or --agent-token.',
     );
     await executor.close();
     process.exit(2);

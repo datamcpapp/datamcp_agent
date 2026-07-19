@@ -9,39 +9,43 @@ exposed to the internet and no inbound firewall rules are required.
 ## Usage
 
 ```bash
-npx datamcp <policy> <database-url> [options]
+npx @datamcp/agent <policy> <database-url> [options]
 ```
 
 The **policy** is the agent's local enforcement ceiling:
 
 | Policy | Aliases | Allows |
 | --- | --- | --- |
-| `ro`  | `read-only`         | reads only — every statement runs in a `READ ONLY` transaction |
+| `ro`  | `read-only`         | reads only, every statement runs in a `READ ONLY` transaction |
 | `rwd` | `read-write-delete` | reads + `INSERT`/`UPDATE`/`DELETE`; DDL & multi-statement blocked |
-| `fa`  | `full-access`       | unrestricted — the database role is the only limit |
+| `fa`  | `full-access`       | unrestricted, the database role is the only limit |
 
 ```bash
 # read-only agent for a local database
-npx datamcp ro postgres://user:pass@localhost:5432/app
+npx @datamcp/agent ro postgres://user:pass@localhost:5432/app
 
 # read/write/delete, named, pointed at the QA cloud
-DATAMCP_STAGE=qa npx datamcp rwd localhost:5432/app --name analytics \
+DATAMCP_STAGE=qa npx @datamcp/agent rwd localhost:5432/app --name analytics \
   --connection-id conn_… --api-key agent_…
 
 # prove the policy holds on YOUR database, then exit (no cloud needed)
-npx datamcp ro postgres://…/app --selftest
+npx @datamcp/agent ro postgres://…/app --selftest
 ```
+
+If you run the agent without `--connection-id`, it creates an anonymous tunnel,
+prints a one-time claim token, and keeps the tunnel online. Paste that claim
+token in the DataMCP dashboard to attach the tunnel to your workspace.
 
 ## Security model
 
 The policy is enforced right at the database connection, **independent of and in
-addition to** whatever the cloud MCP link permits — effective access is the
+addition to** whatever the cloud MCP link permits. Effective access is the
 intersection, so the agent can never exceed its ceiling. Under `ro` and `rwd`:
 
-1. **Text guard** — blocks DDL, multi-statement, `SELECT INTO`, and dangerous
+1. **Text guard**: blocks DDL, multi-statement, `SELECT INTO`, and dangerous
    functions (including quoted-identifier evasions like `"dblink_exec"(…)` and
    outbound `dblink*` calls that would escape the transaction).
-2. **`BEGIN TRANSACTION READ ONLY`** for every read — PostgreSQL rejects any write
+2. **`BEGIN TRANSACTION READ ONLY`** for every read: PostgreSQL rejects any write
    inside it, including one a function called from a `SELECT` attempts. So a
    `SELECT malicious_writer()` cannot write even on a `rwd` agent.
 
@@ -51,7 +55,7 @@ Run `--selftest` to see all of this verified against your own database.
 
 ## Options
 
-`--name`, `--stage`, `--connection-id`, `--api-key`, `--anon-token`, `--cloud-url`,
+`--name`, `--stage`, `--connection-id`, `--api-key`, `--anon-token`, `--agent-token`, `--cloud-url`,
 `--statement-timeout <ms>`, `--selftest`, `--help`, `--version`. Any of these can
 also be set via env (see `.env.example`); CLI flags win.
 

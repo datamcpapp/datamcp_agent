@@ -10,7 +10,7 @@ export interface ParsedCli {
 
 const VERSION = '0.1.0';
 
-export const HELP = `datamcp — self-hosted agent for safe database access via DataMCP
+export const HELP = `datamcp: self-hosted agent for safe database access via DataMCP
 
 USAGE
   datamcp <policy> <database-url> [options]
@@ -21,10 +21,11 @@ POLICY  (the agent's local enforcement ceiling)
   fa | full-access         unrestricted; the database role is the only limit
 
 EXAMPLES
-  npx datamcp ro postgres://user:pass@localhost:5432/app
-  npx datamcp rwd localhost:5432/app --name analytics
-  npx datamcp ro postgres://…/app --selftest        # prove the ceiling on your DB
-  DATAMCP_STAGE=qa npx datamcp ro postgres://…/app   # point at the QA cloud
+  npx @datamcp/agent ro postgres://user:pass@localhost:5432/app
+  npx @datamcp/agent ro postgres://user:pass@localhost:5432/app --stage qa
+  npx @datamcp/agent rwd localhost:5432/app --name analytics
+  npx @datamcp/agent ro postgres://…/app --selftest  # prove the ceiling on your DB
+  DATAMCP_STAGE=qa npx @datamcp/agent ro postgres://…/app
 
 OPTIONS
   --name <n>              friendly agent name
@@ -32,13 +33,16 @@ OPTIONS
   --connection-id <id>    DataMCP connection this agent serves
   --api-key <key>         registered-flow API key
   --anon-token <tok>      anonymous-bootstrap token (claim later in the dashboard)
+  --agent-token <tok>     claimed-agent token
   --cloud-url <url>       override the cloud websocket URL
   --statement-timeout <ms>  per-query timeout (default 30000)
   --selftest              connect to the DB, verify the policy holds, and exit
   --help, --version
 
 The agent runs inside your network, keeps DB credentials local, and connects
-outbound to the cloud. Your database is never exposed to the internet.`;
+outbound to the cloud. If no connection id is provided, the agent creates an
+anonymous tunnel and prints a claim token for the dashboard. Your database is
+never exposed to the internet.`;
 
 const VALUE_FLAGS: Record<string, keyof CliConfig> = {
   '--name': 'name',
@@ -46,6 +50,7 @@ const VALUE_FLAGS: Record<string, keyof CliConfig> = {
   '--connection-id': 'connectionId',
   '--api-key': 'apiKey',
   '--anon-token': 'anonToken',
+  '--agent-token': 'agentToken',
   '--cloud-url': 'cloudUrl',
   '--statement-timeout': 'statementTimeoutMs',
 };

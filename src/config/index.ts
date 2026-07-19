@@ -14,7 +14,8 @@ export interface AgentConfig {
   connectionId: string | null;
   apiKey: string | null;
   anonToken: string | null;
-  /** Local database this agent reaches — credentials never leave this host. */
+  agentToken: string | null;
+  /** Local database this agent reaches; credentials never leave this host. */
   databaseUrl: string;
   statementTimeoutMs: number;
   agentName: string;
@@ -32,25 +33,34 @@ export interface CliConfig {
   connectionId?: string;
   apiKey?: string;
   anonToken?: string;
+  agentToken?: string;
   name?: string;
   statementTimeoutMs?: number;
 }
 
-/** Resolve the cloud websocket URL from the stage — same convention as the
+/** Resolve the cloud websocket URL from the stage, same convention as the
  *  dashboard/server, so one agent build points at QA or production by flag. */
 function resolveCloudUrl(stage: Stage): string {
   switch (stage) {
-    case 'production': return 'wss://api.datamcp.app';
-    case 'qa': return 'wss://api-qa.datamcp.app';
-    case 'staging': return 'wss://staging-api.datamcp.app';
+    case 'production':
+      return 'wss://api.datamcp.app';
+    case 'qa':
+      return 'wss://api-qa.datamcp.app';
+    case 'staging':
+      return 'wss://staging-api.datamcp.app';
     case 'development':
-    default: return 'ws://localhost:7834';
+    default:
+      return 'ws://localhost:7834';
   }
 }
 
 function normalizeStage(raw: string | undefined): Stage {
   const s = (raw || process.env.NODE_ENV || 'development').toLowerCase();
-  return (['production', 'qa', 'staging', 'development'].includes(s) ? s : 'development') as Stage;
+  return (
+    ['production', 'qa', 'staging', 'development'].includes(s)
+      ? s
+      : 'development'
+  ) as Stage;
 }
 
 /** Accept shorthand DB URLs (`localhost/db`, `localhost:///mydb`) by defaulting
@@ -79,15 +89,25 @@ export function resolveConfig(cli: CliConfig = {}): AgentConfig {
   return {
     policy,
     stage,
-    cloudUrl: cli.cloudUrl || process.env.DATAMCP_CLOUD_URL || resolveCloudUrl(stage),
-    connectionId: cli.connectionId || process.env.DATAMCP_CONNECTION_ID || null,
+    cloudUrl:
+      cli.cloudUrl || process.env.DATAMCP_CLOUD_URL || resolveCloudUrl(stage),
+    connectionId:
+      cli.connectionId || process.env.DATAMCP_CONNECTION_ID || null,
     apiKey: cli.apiKey || process.env.DATAMCP_API_KEY || null,
     anonToken: cli.anonToken || process.env.DATAMCP_ANON_TOKEN || null,
+    agentToken: cli.agentToken || process.env.DATAMCP_AGENT_TOKEN || null,
     databaseUrl: normalizeDbUrl(rawDb),
-    statementTimeoutMs: toInt(cli.statementTimeoutMs ?? process.env.AGENT_STATEMENT_TIMEOUT_MS, 30_000),
+    statementTimeoutMs: toInt(
+      cli.statementTimeoutMs ?? process.env.AGENT_STATEMENT_TIMEOUT_MS,
+      30_000,
+    ),
     agentName: cli.name || process.env.AGENT_NAME || 'datamcp-agent',
     heartbeatIntervalMs: toInt(process.env.HEARTBEAT_INTERVAL_MS, 30_000),
-    logLevel: (['debug', 'info', 'warn', 'error'].includes(logLevel) ? logLevel : 'info') as AgentConfig['logLevel'],
+    logLevel: (
+      ['debug', 'info', 'warn', 'error'].includes(logLevel)
+        ? logLevel
+        : 'info'
+    ) as AgentConfig['logLevel'],
     healthPort: toInt(process.env.HEALTH_PORT, 3000),
   };
 }

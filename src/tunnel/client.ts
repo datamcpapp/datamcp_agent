@@ -14,6 +14,17 @@ import {
 
 const AGENT_VERSION = '0.1.0';
 
+interface BootstrapResponse {
+  success: boolean;
+  data?: {
+    connectionId: string;
+    anonToken: string;
+    claimToken: string;
+    expiresAt: string;
+  };
+  error?: { message?: string } | string;
+}
+
 /**
  * Maintains the outbound websocket to the DataMCP cloud (`/agents` namespace),
  * authenticates on the handshake, sends heartbeats, and services `execute_query`
@@ -30,6 +41,24 @@ export class TunnelClient {
   ) {}
 
   start(): void {
+    void this.bootstrapAndConnect();
+  }
+
+  private async bootstrapAndConnect(): Promise<void> {
+    if (!this.config.connectionId) {
+      await this.bootstrapAnonymousConnection();
+    }
+
+    if (
+      !this.config.connectionId ||
+      !(this.config.apiKey || this.config.anonToken || this.config.agentToken)
+    ) {
+      this.logger.error(
+        'Missing cloud credentials. Provide --connection-id plus --api-key, --anon-token, or --agent-token.',
+      );
+      return;
+    }
+
     const url = `${this.config.cloudUrl}/agents`;
     this.logger.info(
       `Connecting to ${url} (stage=${this.config.stage}, connection=${this.config.connectionId})`,
@@ -43,6 +72,7 @@ export class TunnelClient {
     };
     if (this.config.apiKey) auth.apiKey = this.config.apiKey;
     if (this.config.anonToken) auth.anonToken = this.config.anonToken;
+    if (this.config.agentToken) auth.agentToken = this.config.agentToken;
 
     this.socket = io(url, {
       auth,
@@ -53,6 +83,48 @@ export class TunnelClient {
     });
 
     this.registerHandlers(this.socket);
+  }
+
+  private async bootstrapAnonymousConnection(): Promise<void> {
+    const endpoint = `${this.httpBaseUrl()}/api/agents/bootstrap`;
+    this.logger.info(`No connection id provided, bootstrapping at ${endpoint}`);
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: this.config.agentName }),
+    });
+    if (!response.ok) {
+      throw new Error(`Bootstrap failed with HTTP ${response.status}`);
+    }
+
+    const payload = (await response.json()) as BootstrapResponse;
+    if (!payload.success || !payload.data) {
+      const message =
+        typeof payload.error === 'string'
+          ? payload.error
+          : payload.error?.message || 'Bootstrap failed';
+      throw new Error(message);
+    }
+
+    this.config.connectionId = payload.data.connectionId;
+    this.config.anonToken = payload.data.anonToken;
+
+    this.logger.info(`Anonymous tunnel created: ${payload.data.connectionId}`);
+    this.logger.info(`Claim token: ${payload.data.claimToken}`);
+    this.logger.info(
+      `Open DataMCP, choose Local Agent claim, and paste this claim token before ${payload.data.expiresAt}.`,
+    );
+  }
+
+  private httpBaseUrl(): string {
+    if (this.config.cloudUrl.startsWith('wss://')) {
+      return `https://${this.config.cloudUrl.slice('wss://'.length)}`;
+    }
+    if (this.config.cloudUrl.startsWith('ws://')) {
+      return `http://${this.config.cloudUrl.slice('ws://'.length)}`;
+    }
+    return this.config.cloudUrl.replace(/\/$/, '');
   }
 
   private registerHandlers(socket: Socket): void {
