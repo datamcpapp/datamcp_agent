@@ -36,6 +36,9 @@ OPTIONS
   --agent-token <tok>     claimed-agent token
   --cloud-url <url>       override the cloud websocket URL
   --statement-timeout <ms>  per-query timeout (default 30000)
+  --max-result-rows <n>   max rows returned per query (default 1000)
+  --max-result-bytes <n>  max JSON response bytes per query (default 1000000)
+  --max-concurrent-queries <n>  max parallel cloud queries (default 4)
   --selftest              connect to the DB, verify the policy holds, and exit
   --help, --version
 
@@ -53,6 +56,9 @@ const VALUE_FLAGS: Record<string, keyof CliConfig> = {
   '--agent-token': 'agentToken',
   '--cloud-url': 'cloudUrl',
   '--statement-timeout': 'statementTimeoutMs',
+  '--max-result-rows': 'maxResultRows',
+  '--max-result-bytes': 'maxResultBytes',
+  '--max-concurrent-queries': 'maxConcurrentQueries',
 };
 
 export function parseArgs(argv: string[]): ParsedCli {
@@ -68,7 +74,14 @@ export function parseArgs(argv: string[]): ParsedCli {
       const val = argv[++i];
       if (val === undefined) return { ...out, error: `Missing value for ${arg}` };
       const key = VALUE_FLAGS[arg];
-      out.cli[key] = (key === 'statementTimeoutMs' ? Number(val) : val) as never;
+      out.cli[key] = (
+        key === 'statementTimeoutMs' ||
+        key === 'maxResultRows' ||
+        key === 'maxResultBytes' ||
+        key === 'maxConcurrentQueries'
+          ? Number(val)
+          : val
+      ) as never;
       continue;
     }
     if (arg.startsWith('-')) return { ...out, error: `Unknown option: ${arg}` };

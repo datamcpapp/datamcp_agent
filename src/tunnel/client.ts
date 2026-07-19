@@ -33,6 +33,7 @@ interface BootstrapResponse {
 export class TunnelClient {
   private socket: Socket | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  private activeQueries = 0;
 
   constructor(
     private readonly config: AgentConfig,
@@ -111,9 +112,10 @@ export class TunnelClient {
     this.config.anonToken = payload.data.anonToken;
 
     this.logger.info(`Anonymous tunnel created: ${payload.data.connectionId}`);
-    this.logger.info(`Claim token: ${payload.data.claimToken}`);
-    this.logger.info(
-      `Open DataMCP, choose Local Agent claim, and paste this claim token before ${payload.data.expiresAt}.`,
+    console.log('\nDataMCP claim token');
+    console.log(payload.data.claimToken);
+    console.log(
+      `Paste this token in the Local Agent claim flow before ${payload.data.expiresAt}.\n`,
     );
   }
 
@@ -167,9 +169,24 @@ export class TunnelClient {
     socket: Socket,
     req: AgentExecuteQueryRequest,
   ): Promise<void> {
+    if (this.activeQueries >= this.config.maxConcurrentQueries) {
+      socket.emit('query_result', {
+        queryId: req.queryId,
+        success: false,
+        error: `Agent concurrency limit reached (${this.config.maxConcurrentQueries})`,
+        duration: 0,
+      });
+      return;
+    }
+
+    this.activeQueries += 1;
     this.logger.debug(`execute_query ${req.queryId}: ${req.sql.slice(0, 120)}`);
-    const result = await this.executor.execute(req);
-    socket.emit('query_result', result);
+    try {
+      const result = await this.executor.execute(req);
+      socket.emit('query_result', result);
+    } finally {
+      this.activeQueries -= 1;
+    }
   }
 
   private async handleSchema(

@@ -25,8 +25,8 @@ The **policy** is the agent's local enforcement ceiling:
 npx @datamcp/agent ro postgres://user:pass@localhost:5432/app
 
 # read/write/delete, named, pointed at the QA cloud
-DATAMCP_STAGE=qa npx @datamcp/agent rwd localhost:5432/app --name analytics \
-  --connection-id conn_… --api-key agent_…
+DATAMCP_STAGE=qa DATAMCP_API_KEY=agent_… npx @datamcp/agent rwd localhost:5432/app \
+  --name analytics --connection-id conn_…
 
 # prove the policy holds on YOUR database, then exit (no cloud needed)
 npx @datamcp/agent ro postgres://…/app --selftest
@@ -49,15 +49,23 @@ intersection, so the agent can never exceed its ceiling. Under `ro` and `rwd`:
    inside it, including one a function called from a `SELECT` attempts. So a
    `SELECT malicious_writer()` cannot write even on a `rwd` agent.
 
-`SET LOCAL statement_timeout` caps runaway/DoS queries.
+`SET LOCAL statement_timeout` caps runaway/DoS queries. Result row count,
+response bytes, and parallel query count are also capped locally before data
+leaves the agent.
+
+For production, prefer env vars or a service manager secret over passing
+`--api-key`, `--anon-token`, or `--agent-token` on the command line, because
+argv can appear in shell history and process listings.
 
 Run `--selftest` to see all of this verified against your own database.
 
 ## Options
 
-`--name`, `--stage`, `--connection-id`, `--api-key`, `--anon-token`, `--agent-token`, `--cloud-url`,
-`--statement-timeout <ms>`, `--selftest`, `--help`, `--version`. Any of these can
-also be set via env (see `.env.example`); CLI flags win.
+`--name`, `--stage`, `--connection-id`, `--api-key`, `--anon-token`,
+`--agent-token`, `--cloud-url`, `--statement-timeout <ms>`,
+`--max-result-rows <n>`, `--max-result-bytes <n>`,
+`--max-concurrent-queries <n>`, `--selftest`, `--help`, `--version`. Any of
+these can also be set via env (see `.env.example`); CLI flags win.
 
 ## Development
 
@@ -65,6 +73,7 @@ also be set via env (see `.env.example`); CLI flags win.
 npm install
 npm run typecheck
 npm run test:policy      # unit tests for the policy engine
+npm run test:security    # redaction and limit parsing tests
 npm run build            # -> dist/
 node dist/index.js ro postgres://…/app --selftest
 ```

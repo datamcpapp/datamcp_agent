@@ -151,15 +151,23 @@ export class DbExecutor {
       }
 
       const result = await client.query({ text: req.sql, values: req.params ?? [] });
+      const cappedRows = capRowsBySize(
+        result.rows,
+        this.config.maxResultRows,
+        this.config.maxResultBytes,
+      );
 
       if (inReadOnlyTx) { await client.query('COMMIT'); inReadOnlyTx = false; }
 
       return {
         queryId: req.queryId,
         success: true,
-        rows: result.rows,
+        rows: cappedRows.rows,
         fields: (result.fields ?? []).map((f) => ({ name: f.name })),
-        rowCount: result.rowCount ?? 0,
+        rowCount: cappedRows.truncated
+          ? cappedRows.rows.length
+          : result.rowCount ?? cappedRows.rows.length,
+        truncated: cappedRows.truncated,
         duration: Date.now() - started,
       };
     } catch (err) {
@@ -184,5 +192,30 @@ export class DbExecutor {
 function clampTimeout(requested: number, fallback: number): number {
   const n = Number(requested);
   if (!Number.isFinite(n) || n <= 0) return fallback;
-  return Math.max(1_000, Math.min(600_000, Math.floor(n)));
+  return Math.max(1_000, Math.min(fallback, 60_000, Math.floor(n)));
+}
+
+function capRowsBySize(
+  rows: unknown[],
+  maxRows: number,
+  maxBytes: number,
+): { rows: unknown[]; truncated: boolean } {
+  const capped: unknown[] = [];
+  let bytes = 2;
+
+  for (const row of rows) {
+    if (capped.length >= maxRows) {
+      return { rows: capped, truncated: true };
+    }
+
+    const rowBytes = Buffer.byteLength(JSON.stringify(row), 'utf8') + 1;
+    if (bytes + rowBytes > maxBytes) {
+      return { rows: capped, truncated: true };
+    }
+
+    capped.push(row);
+    bytes += rowBytes;
+  }
+
+  return { rows: capped, truncated: capped.length < rows.length };
 }

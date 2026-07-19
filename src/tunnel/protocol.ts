@@ -19,6 +19,7 @@ export interface AgentExecuteQueryResult {
   rows?: unknown[];
   fields?: { name: string }[];
   rowCount?: number;
+  truncated?: boolean;
   error?: string;
   duration: number;
 }

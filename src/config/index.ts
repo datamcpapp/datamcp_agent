@@ -18,6 +18,9 @@ export interface AgentConfig {
   /** Local database this agent reaches; credentials never leave this host. */
   databaseUrl: string;
   statementTimeoutMs: number;
+  maxResultRows: number;
+  maxResultBytes: number;
+  maxConcurrentQueries: number;
   agentName: string;
   heartbeatIntervalMs: number;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
@@ -36,6 +39,9 @@ export interface CliConfig {
   agentToken?: string;
   name?: string;
   statementTimeoutMs?: number;
+  maxResultRows?: number;
+  maxResultBytes?: number;
+  maxConcurrentQueries?: number;
 }
 
 /** Resolve the cloud websocket URL from the stage, same convention as the
@@ -100,6 +106,18 @@ export function resolveConfig(cli: CliConfig = {}): AgentConfig {
     statementTimeoutMs: toInt(
       cli.statementTimeoutMs ?? process.env.AGENT_STATEMENT_TIMEOUT_MS,
       30_000,
+    ),
+    maxResultRows: toInt(
+      cli.maxResultRows ?? process.env.AGENT_MAX_RESULT_ROWS,
+      1_000,
+    ),
+    maxResultBytes: toInt(
+      cli.maxResultBytes ?? process.env.AGENT_MAX_RESULT_BYTES,
+      1_000_000,
+    ),
+    maxConcurrentQueries: toInt(
+      cli.maxConcurrentQueries ?? process.env.AGENT_MAX_CONCURRENT_QUERIES,
+      4,
     ),
     agentName: cli.name || process.env.AGENT_NAME || 'datamcp-agent',
     heartbeatIntervalMs: toInt(process.env.HEARTBEAT_INTERVAL_MS, 30_000),
