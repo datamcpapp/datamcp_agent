@@ -9,6 +9,7 @@ import {
 import { logger } from '../utils/logger';
 import { DatabaseService } from './database.service';
 import * as os from 'os';
+import { VERSION } from '../version';
 
 /**
  * WebSocket client that connects this agent to api.datamcp.app/agents.
@@ -53,7 +54,7 @@ export class AgentService {
     logger.info('Connecting to DataMCP cloud...');
     const auth: Record<string, string> = {
       connectionId: this.config.connectionId!,
-      agentVersion: '1.0.0',
+      agentVersion: VERSION,
       hostname: os.hostname(),
     };
     // Prefer agentToken (post-claim) > apiKey > anonToken. The server checks
@@ -232,7 +233,7 @@ export class AgentService {
   private sendHeartbeat(): void {
     if (!this.socket?.connected) return;
     const heartbeat: HeartbeatData = {
-      version: '1.0.0',
+      version: VERSION,
       metadata: {
         hostname: os.hostname(),
         platform: os.platform(),
