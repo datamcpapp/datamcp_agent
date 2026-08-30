@@ -46,6 +46,38 @@ function parseArgs(argv: string[]): CliArgs {
   };
 }
 
+export function hasHelpFlag(argv: string[] = process.argv.slice(2)): boolean {
+  return argv.includes('--help') || argv.includes('-h') || argv.includes('help');
+}
+
+export function hasVersionFlag(argv: string[] = process.argv.slice(2)): boolean {
+  return argv.includes('--version') || argv.includes('-v') || argv.includes('version');
+}
+
+export function printHelp(): void {
+  console.log(`DataMCP Agent
+
+Usage:
+  datamcp-agent --db <postgresql://...>
+  datamcp-agent --db <postgresql://...> --api-key <sk_live_...> --connection-id <conn_...>
+
+Options:
+  --db <url>                  PostgreSQL URL. Also DATAMCP_DB_URL.
+  --api-key <key>             DataMCP API key for registered tunnels.
+  --connection-id <id>        DataMCP tunnel connection id.
+  --cloud-url <url>           DataMCP cloud URL. Default: wss://api.datamcp.app.
+  --agent-name <name>         Friendly name shown in DataMCP.
+  --log-level <level>         debug, info, warn, or error. Default: info.
+  --port <port>               Local health port. Default: 3000.
+  --help                      Show this help.
+  --version                   Show version.
+
+Examples:
+  npx @datamcp/agent --db postgresql://localhost:5432/app
+  datamcp-agent --db "$DATABASE_URL" --api-key "$DATAMCP_API_KEY" --connection-id "$DATAMCP_CONNECTION_ID"
+`);
+}
+
 export async function loadConfig(argv: string[] = process.argv.slice(2)): Promise<AgentConfig> {
   const cli = parseArgs(argv);
 

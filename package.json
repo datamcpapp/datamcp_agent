@@ -1,14 +1,16 @@
 {
   "name": "@datamcp/agent",
-  "version": "1.0.0",
-  "description": "DataMCP self-hosted agent for private database access",
+  "version": "0.1.0",
+  "description": "DataMCP local tunnel agent for private PostgreSQL databases",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
     "datamcp-agent": "dist/index.js"
   },
   "files": [
     "dist",
     "README.md",
+    "QUICKSTART.md",
     "LICENSE"
   ],
   "scripts": {
@@ -18,31 +20,48 @@
     "dev:watch": "nodemon --watch src --exec ts-node src/index.ts",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
-    "prepublishOnly": "npm run build"
+    "test:package": "npm pack --dry-run",
+    "prepublishOnly": "npm run build && npm run test:package"
   },
   "keywords": [
     "datamcp",
+    "mcp",
     "agent",
+    "tunnel",
+    "postgresql",
     "database",
-    "private-network"
+    "private-network",
+    "ai-tools"
   ],
   "author": "DataMCP",
   "license": "MIT",
+  "homepage": "https://datamcp.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/datamcpapp/datamcp_agent.git"
+  },
+  "bugs": {
+    "url": "https://github.com/datamcpapp/datamcp_agent/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "dependencies": {
-    "socket.io-client": "^4.8.1",
+    "dotenv": "^16.4.7",
     "pg": "^8.13.1",
-    "uuid": "^11.0.4",
-    "dotenv": "^16.4.7"
+    "socket.io-client": "^4.8.1",
+    "uuid": "^11.0.4"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
     "@types/pg": "^8.11.10",
     "@types/uuid": "^10.0.0",
-    "typescript": "^5.7.3",
-    "ts-node": "^10.9.2",
-    "nodemon": "^3.1.9",
     "eslint": "^9.18.0",
-    "prettier": "^3.4.2"
+    "nodemon": "^3.1.9",
+    "prettier": "^3.4.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
   },
   "engines": {
     "node": ">=18.0.0"

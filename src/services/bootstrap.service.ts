@@ -1,5 +1,6 @@
 import * as os from 'os';
 import { logger } from '../utils/logger';
+import { VERSION } from '../version';
 
 export interface AnonymousBootstrapResponse {
   connectionId: string;
@@ -33,7 +34,7 @@ export async function anonymousBootstrap(
 
   const body = {
     hostname: os.hostname(),
-    agentVersion: '1.0.0',
+    agentVersion: VERSION,
     fingerprint: makeFingerprint(),
   };
 

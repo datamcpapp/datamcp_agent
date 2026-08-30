@@ -17,7 +17,7 @@ metadata:
   name: datamcp-agent-config
   namespace: datamcp
 data:
-  DATAMCP_CLOUD_URL: "wss://api.datamcp.com"
+  DATAMCP_CLOUD_URL: "wss://api.datamcp.app"
   AGENT_NAME: "Kubernetes Agent"
   HEARTBEAT_INTERVAL: "30000"
   LOG_LEVEL: "info"
@@ -64,7 +64,7 @@ spec:
       
       containers:
       - name: agent
-        image: datamcp/agent:latest
+        image: ghcr.io/datamcpapp/agent:latest
         imagePullPolicy: Always
         
         # Environment variables from ConfigMap

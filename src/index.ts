@@ -1,18 +1,30 @@
 #!/usr/bin/env node
 import { loadConfig } from './utils/config';
+import { hasHelpFlag, hasVersionFlag, printHelp } from './utils/config';
 import { logger } from './utils/logger';
 import { AgentService } from './services/agent.service';
 import { DatabaseService } from './services/database.service';
 import { HealthService } from './services/health.service';
 import { anonymousBootstrap, printBootstrapResult } from './services/bootstrap.service';
+import { VERSION } from './version';
 
 async function main() {
   try {
+    if (hasHelpFlag()) {
+      printHelp();
+      return;
+    }
+
+    if (hasVersionFlag()) {
+      console.log(VERSION);
+      return;
+    }
+
     const config = await loadConfig();
     logger.setLevel(config.logLevel);
 
     logger.info('DataMCP Agent starting...', {
-      version: '1.0.0',
+      version: VERSION,
       name: config.agentName,
     });
 

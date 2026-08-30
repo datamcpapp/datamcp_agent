@@ -1,6 +1,7 @@
 import * as http from 'http';
 import { logger } from '../utils/logger';
 import { AgentService } from './agent.service';
+import { VERSION } from '../version';
 
 /**
  * Health service for HTTP health checks
@@ -53,7 +54,7 @@ export class HealthService {
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       memory: process.memoryUsage(),
-      version: '1.0.0',
+      version: VERSION,
     };
 
     res.writeHead(200, { 'Content-Type': 'application/json' });

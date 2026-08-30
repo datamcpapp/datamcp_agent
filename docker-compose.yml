@@ -6,15 +6,15 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: datamcp-agent
-    image: datamcp/agent:latest
+    image: ghcr.io/datamcpapp/agent:latest
     
     # Environment variables
     environment:
       # Required: Your agent API key from DataMCP dashboard
       - DATAMCP_API_KEY=${DATAMCP_API_KEY}
       
-      # Optional: DataMCP cloud URL (default: wss://api.datamcp.com)
-      - DATAMCP_CLOUD_URL=${DATAMCP_CLOUD_URL:-wss://api.datamcp.com}
+      # Optional: DataMCP cloud URL (default: wss://api.datamcp.app)
+      - DATAMCP_CLOUD_URL=${DATAMCP_CLOUD_URL:-wss://api.datamcp.app}
       
       # Optional: Friendly name for the agent
       - AGENT_NAME=${AGENT_NAME:-Docker Agent}
