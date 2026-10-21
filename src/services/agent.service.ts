@@ -16,7 +16,7 @@ import { VERSION } from '../version';
  *
  * Wire protocol (see docs/LOCAL_AGENT_PLAN.md §4):
  *  - path: '/agents'
- *  - handshake auth: { connectionId, apiKey | anonToken, agentVersion, hostname }
+ *  - handshake auth: { connectionId, apiKey | agentToken, agentVersion, hostname }
  *  - cloud → agent: 'execute_query' / 'extract_schema' / 'health_check'
  *  - agent → cloud: 'query_result' / 'schema_result' / 'health_check_result' / 'heartbeat'
  */
@@ -35,11 +35,6 @@ export class AgentService {
   ) {}
 
   start(): void {
-    if (!this.config.connectionId) {
-      throw new Error(
-        'connectionId not set — anonymous bootstrap or --connection-id is required before start()',
-      );
-    }
     logger.info('Starting DataMCP Agent', {
       name: this.config.agentName,
       cloudUrl: this.config.cloudUrl,
@@ -53,15 +48,12 @@ export class AgentService {
 
     logger.info('Connecting to DataMCP cloud...');
     const auth: Record<string, string> = {
-      connectionId: this.config.connectionId!,
+      connectionId: this.config.connectionId,
       agentVersion: VERSION,
       hostname: os.hostname(),
     };
-    // Prefer agentToken (post-claim) > apiKey > anonToken. The server checks
-    // them in the same priority order, see agent.gateway.ts handleConnection.
     if (this.config.agentToken) auth.agentToken = this.config.agentToken;
     else if (this.config.apiKey) auth.apiKey = this.config.apiKey;
-    else if (this.config.anonToken) auth.anonToken = this.config.anonToken;
 
     // socket.io: namespace is part of the URL ('/agents'), not the `path` option.
     // `path` is the HTTP endpoint (default '/socket.io') — leaving it default.
@@ -162,56 +154,6 @@ export class AgentService {
         }
       })();
     });
-
-    // Plan §10.6: claim happened — rotate to the long-lived agent token,
-    // surface the permanent MCP URL, and reconnect with the new auth.
-    this.socket.on(
-      'connection:claimed',
-      (payload: {
-        connectionId?: string;
-        newAgentToken?: string;
-        permanentMcpUrl?: string;
-        graceUntil?: string;
-      }) => {
-        if (!payload.newAgentToken) {
-          logger.warn('connection:claimed missing newAgentToken — ignoring');
-          return;
-        }
-        logger.info('Connection claimed', { graceUntil: payload.graceUntil });
-
-        // Drop the anonymous credential — it's about to be deactivated server-side.
-        this.config.anonToken = null;
-        this.config.agentToken = payload.newAgentToken;
-        if (payload.connectionId) this.config.connectionId = payload.connectionId;
-
-        // Reconnect with the new auth. socket.io picks up the new auth on
-        // connect because we re-read this.config inside connect().
-        this.socket?.disconnect();
-        this.connect();
-
-        console.log('');
-        console.log('✅ Connection saved to your account.');
-        console.log('📋 New permanent MCP URL:');
-        console.log(`   ${payload.permanentMcpUrl ?? '(not provided)'}`);
-        if (payload.graceUntil) {
-          console.log(`   The old anonymous URL keeps working until ${payload.graceUntil}.`);
-        }
-        console.log('');
-      },
-    );
-
-    this.socket.on(
-      'force_reconnect_with',
-      (payload: { newAgentToken?: string; connectionId?: string }) => {
-        if (!payload.newAgentToken) return;
-        logger.info('force_reconnect_with received — rotating credentials');
-        this.config.anonToken = null;
-        this.config.agentToken = payload.newAgentToken;
-        if (payload.connectionId) this.config.connectionId = payload.connectionId;
-        this.socket?.disconnect();
-        this.connect();
-      },
-    );
   }
 
   private startHeartbeat(): void {

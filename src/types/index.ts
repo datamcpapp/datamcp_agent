@@ -3,27 +3,28 @@
  * and never leave this process — server only ever sends a connectionId.
  */
 export interface AgentConfig {
-  apiKey: string | null; // sk_live_* — registered flow
-  anonToken: string | null; // 32B base64url — anonymous flow, replaced on claim
-  agentToken: string | null; // 32B base64url — set after claim (post-rotation)
-  connectionId: string | null; // null for anonymous bootstrap, set after
+  apiKey: string | null;
+  agentToken: string | null;
+  connectionId: string;
   databaseUrl: string; // postgresql://... — local-only credential
   cloudUrl: string;
   agentName: string;
   heartbeatInterval: number;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   port: number;
+  readOnlyCeiling: boolean;
 }
 
 /**
  * Cloud → agent: execute a query against the local pg.
- * NB: no DatabaseConfig — agent already has it locally (see plan §4.3).
+ * The agent already has the database configuration locally.
  */
 export interface QueryRequest {
   queryId: string;
   sql: string;
   params: unknown[];
   timeoutMs: number;
+  readOnly?: boolean;
 }
 
 export interface QueryResult {

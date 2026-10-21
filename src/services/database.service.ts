@@ -1,4 +1,4 @@
-import { Pool, PoolClient, QueryResult } from 'pg';
+import { Pool, PoolClient, QueryConfig, QueryResult } from 'pg';
 import {
   QueryRequest,
   QueryResult as AgentQueryResult,
@@ -46,12 +46,15 @@ interface IndexRow {
 /**
  * One DatabaseService instance owns one pg.Pool, bound to the agent's --db URL.
  * The cloud never sends DB credentials over the wire — it only sends a
- * connectionId in the WS handshake (see plan §4.3 fix).
+ * connectionId in the WS handshake.
  */
 export class DatabaseService {
   private pool: Pool | null = null;
 
-  constructor(private readonly databaseUrl: string) {}
+  constructor(
+    private readonly databaseUrl: string,
+    private readonly readOnlyCeiling = false,
+  ) {}
 
   private getPool(): Pool {
     if (!this.pool) {
@@ -82,15 +85,29 @@ export class DatabaseService {
   async executeQuery(request: QueryRequest): Promise<AgentQueryResult> {
     const startTime = Date.now();
     const { queryId, sql, params, timeoutMs = 30000 } = request;
+    const readOnly = this.readOnlyCeiling || request.readOnly !== false;
 
     logger.info(`Executing query ${queryId}`);
     let client: PoolClient | undefined;
     try {
       client = await this.getPool().connect();
-      const clampedTimeout = Math.max(1000, Math.min(600_000, Math.floor(timeoutMs)));
-      await client.query(`SET statement_timeout = ${clampedTimeout}`);
+      const clampedTimeout = Math.max(
+        1000,
+        Math.min(600_000, Math.floor(timeoutMs)),
+      );
+      if (readOnly) {
+        await client.query('BEGIN TRANSACTION READ ONLY');
+        await client.query(`SET LOCAL statement_timeout = ${clampedTimeout}`);
+      } else {
+        await client.query(`SET statement_timeout = ${clampedTimeout}`);
+      }
 
-      const result: QueryResult = await client.query(sql, params ?? []);
+      const queryConfig: QueryConfig & { queryMode: 'extended' } = {
+        text: sql,
+        values: params ?? [],
+        queryMode: 'extended',
+      };
+      const result: QueryResult = await client.query(queryConfig);
 
       const duration = Date.now() - startTime;
       logger.info(`Query ${queryId} ok`, { duration, rowCount: result.rowCount });
@@ -115,7 +132,9 @@ export class DatabaseService {
       };
     } finally {
       if (client) {
-        await client.query('RESET statement_timeout').catch(() => {});
+        await client
+          .query(readOnly ? 'ROLLBACK' : 'RESET statement_timeout')
+          .catch(() => {});
         client.release();
       }
     }

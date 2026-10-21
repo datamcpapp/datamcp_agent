@@ -18,6 +18,8 @@ metadata:
   namespace: datamcp
 data:
   DATAMCP_CLOUD_URL: "wss://api.datamcp.app"
+  DATAMCP_CONNECTION_ID: "conn_replace_with_your_tunnel_id"
+  DATAMCP_READ_ONLY: "true"
   AGENT_NAME: "Kubernetes Agent"
   HEARTBEAT_INTERVAL: "30000"
   LOG_LEVEL: "info"
@@ -31,7 +33,8 @@ metadata:
   namespace: datamcp
 type: Opaque
 stringData:
-  api-key: "agent_your_api_key_here"  # Replace with your actual API key
+  agent-token: "agent_replace_with_your_scoped_token"
+  database-url: "postgresql://read_only_user:password@postgres.internal:5432/app"
 
 ---
 apiVersion: apps/v1
@@ -74,11 +77,16 @@ spec:
         
         # Environment variables from Secret
         env:
-        - name: DATAMCP_API_KEY
+        - name: DATAMCP_AGENT_TOKEN
           valueFrom:
             secretKeyRef:
               name: datamcp-agent-secret
-              key: api-key
+              key: agent-token
+        - name: DATAMCP_DB_URL
+          valueFrom:
+            secretKeyRef:
+              name: datamcp-agent-secret
+              key: database-url
         
         # Ports
         ports:

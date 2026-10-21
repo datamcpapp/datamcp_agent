@@ -6,7 +6,10 @@ dotenvConfig();
 
 interface CliArgs {
   db?: string;
+  mode?: string;
+  stage?: string;
   apiKey?: string;
+  agentToken?: string;
   connectionId?: string;
   cloudUrl?: string;
   agentName?: string;
@@ -36,8 +39,15 @@ function parseArgs(argv: string[]): CliArgs {
     }
   }
   return {
-    db: args['db'],
+    db:
+      args['db'] ||
+      (argv[0] === 'ro' && argv[1] && !argv[1].startsWith('--')
+        ? argv[1]
+        : undefined),
+    mode: argv[0] === 'ro' ? 'ro' : undefined,
+    stage: args['stage'],
     apiKey: args['api-key'],
+    agentToken: args['agent-token'],
     connectionId: args['connection-id'],
     cloudUrl: args['cloud-url'],
     agentName: args['agent-name'],
@@ -58,13 +68,17 @@ export function printHelp(): void {
   console.log(`DataMCP Agent
 
 Usage:
-  datamcp-agent --db <postgresql://...>
-  datamcp-agent --db <postgresql://...> --api-key <sk_live_...> --connection-id <conn_...>
+  datamcp-agent ro <postgresql://...> --stage qa --connection-id <conn_...>
+  datamcp-agent --db <postgresql://...> --agent-token <agent_...> --connection-id <conn_...>
 
 Options:
   --db <url>                  PostgreSQL URL. Also DATAMCP_DB_URL.
-  --api-key <key>             DataMCP API key for registered tunnels.
+  --api-key <key>             Legacy DataMCP API key for older tunnels.
+  --agent-token <token>       Agent token for a claimed tunnel.
   --connection-id <id>        DataMCP tunnel connection id.
+  --stage <stage>             qa, production, or development (default: production).
+  ro                          Enforce a local read-only ceiling for all queries.
+  DATAMCP_READ_ONLY=true      Enforce the same ceiling in Docker or Kubernetes.
   --cloud-url <url>           DataMCP cloud URL. Default: wss://api.datamcp.app.
   --agent-name <name>         Friendly name shown in DataMCP.
   --log-level <level>         debug, info, warn, or error. Default: info.
@@ -73,8 +87,8 @@ Options:
   --version                   Show version.
 
 Examples:
-  npx @datamcp/agent --db postgresql://localhost:5432/app
-  datamcp-agent --db "$DATABASE_URL" --api-key "$DATAMCP_API_KEY" --connection-id "$DATAMCP_CONNECTION_ID"
+  npx @datamcp/agent ro "$DATABASE_URL" --stage qa --connection-id "$DATAMCP_CONNECTION_ID"
+  datamcp-agent --db "$DATABASE_URL" --agent-token "$DATAMCP_AGENT_TOKEN" --connection-id "$DATAMCP_CONNECTION_ID"
 `);
 }
 
@@ -88,15 +102,30 @@ export async function loadConfig(argv: string[] = process.argv.slice(2)): Promis
     );
   }
 
-  // apiKey is OPTIONAL — its absence triggers anonymous bootstrap flow.
   const apiKey = cli.apiKey || process.env.DATAMCP_API_KEY || null;
   if (apiKey && !apiKey.startsWith('sk_live_') && !apiKey.startsWith('agent_')) {
     throw new Error('Invalid API key format — expected sk_live_* or agent_* prefix');
   }
 
-  const connectionId = cli.connectionId || process.env.DATAMCP_CONNECTION_ID || null;
+  const connectionId =
+    cli.connectionId || process.env.DATAMCP_CONNECTION_ID || null;
+  const agentToken = cli.agentToken || process.env.DATAMCP_AGENT_TOKEN || null;
+  if (!connectionId || ![apiKey, agentToken].some(Boolean)) {
+    throw new Error(
+      'A connection ID and DATAMCP_API_KEY or DATAMCP_AGENT_TOKEN are required. Create a Local Agent connection in the dashboard first.',
+    );
+  }
 
-  const cloudUrl = cli.cloudUrl || process.env.DATAMCP_CLOUD_URL || 'wss://api.datamcp.app';
+  const stage = cli.stage || process.env.DATAMCP_STAGE || 'production';
+  const stageUrls: Record<string, string> = {
+    production: 'wss://api.datamcp.app',
+    qa: 'wss://api-qa.datamcp.app',
+    development: 'ws://localhost:7834',
+  };
+  if (!stageUrls[stage]) {
+    throw new Error(`Invalid stage: ${stage}`);
+  }
+  const cloudUrl = cli.cloudUrl || process.env.DATAMCP_CLOUD_URL || stageUrls[stage];
   const agentName =
     cli.agentName || process.env.AGENT_NAME || (await import('os')).hostname();
   const heartbeatInterval = parseInt(process.env.HEARTBEAT_INTERVAL || '30000', 10);
@@ -117,8 +146,7 @@ export async function loadConfig(argv: string[] = process.argv.slice(2)): Promis
 
   const config: AgentConfig = {
     apiKey,
-    anonToken: null,
-    agentToken: null,
+    agentToken,
     connectionId,
     databaseUrl,
     cloudUrl,
@@ -126,13 +154,15 @@ export async function loadConfig(argv: string[] = process.argv.slice(2)): Promis
     heartbeatInterval,
     logLevel,
     port,
+    readOnlyCeiling:
+      cli.mode === 'ro' || process.env.DATAMCP_READ_ONLY === 'true',
   };
 
   logger.info('Configuration loaded', {
     cloudUrl: config.cloudUrl,
     agentName: config.agentName,
-    connectionId: config.connectionId ?? '(pending bootstrap)',
-    authMode: apiKey ? 'registered' : 'anonymous',
+    connectionId: config.connectionId,
+    authMode: agentToken ? 'agent' : 'registered',
     logLevel: config.logLevel,
     port: config.port,
   });

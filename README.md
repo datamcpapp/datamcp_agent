@@ -6,20 +6,24 @@ The agent runs inside your network, connects outbound to DataMCP Cloud over WebS
 
 ## Install
 
+The npm package and Homebrew tap have not been published yet. The commands below are the intended install paths after the first release. For QA development, build and run this repository locally with `npm ci && npm run build`, then replace `npx @datamcp/agent` with `node dist/index.js` in the dashboard command.
+
 ### npx
 
 ```bash
-npx @datamcp/agent --db postgresql://user:password@localhost:5432/app
+DATAMCP_AGENT_TOKEN="$YOUR_DATAMCP_AGENT_TOKEN" npx @datamcp/agent ro \
+  "$DATABASE_URL" --stage qa --connection-id "$DATAMCP_CONNECTION_ID"
 ```
 
 ### npm global
 
 ```bash
 npm install -g @datamcp/agent
-datamcp-agent --db postgresql://user:password@localhost:5432/app
+DATAMCP_AGENT_TOKEN="$YOUR_DATAMCP_AGENT_TOKEN" datamcp-agent ro \
+  "$DATABASE_URL" --stage qa --connection-id "$DATAMCP_CONNECTION_ID"
 ```
 
-### Homebrew
+### Homebrew (after the tap is published)
 
 Homebrew uses the same official npm package under the hood:
 
@@ -33,40 +37,39 @@ brew install datamcp-agent
 ```bash
 docker run --rm \
   -e DATAMCP_DB_URL='postgresql://user:password@host.docker.internal:5432/app' \
+  -e DATAMCP_CONNECTION_ID="$DATAMCP_CONNECTION_ID" \
+  -e DATAMCP_AGENT_TOKEN="$YOUR_DATAMCP_AGENT_TOKEN" \
+  -e DATAMCP_STAGE=qa \
   ghcr.io/datamcpapp/agent:latest
 ```
 
 ## Quick start
-
-### Anonymous tunnel
-
-Use this when you want to try DataMCP before creating a permanent dashboard connection:
-
-```bash
-npx @datamcp/agent --db postgresql://user:password@localhost:5432/app
-```
-
-The agent prints:
-
-```text
-MCP URL: https://api.datamcp.app/api/mcp/anon/...
-Claim URL: https://dashboard.datamcp.app/claim?token=...
-```
-
-Anonymous tunnels are read-only and expire.
 
 ### Registered tunnel
 
 Use this for a dashboard-created connection:
 
 ```bash
-datamcp-agent \
-  --db "$DATABASE_URL" \
-  --api-key "$DATAMCP_API_KEY" \
+DATAMCP_AGENT_TOKEN="$YOUR_DATAMCP_AGENT_TOKEN" datamcp-agent \
+  ro "$DATABASE_URL" \
+  --stage qa \
   --connection-id "$DATAMCP_CONNECTION_ID"
 ```
 
-The dashboard can generate this command for the user.
+The dashboard generates the complete command. `ro` is a local read-only ceiling; use a read-only PostgreSQL role as well.
+
+The anonymous, account-free flow is not supported end to end yet. Create a Local Agent connection in the dashboard first.
+
+On QA, the backend requires `ENABLE_AGENT_DEPLOYMENT=true` and the dashboard requires `NEXT_PUBLIC_ENABLE_AGENT_DEPLOYMENT=true`. Keep both disabled in production until QA validation is complete.
+
+### Use from n8n
+
+1. Create an MCP link for the Local Agent connection in DataMCP and choose a read-only scope.
+2. In n8n, add **MCP Client** for a normal workflow step or **MCP Client Tool** under an AI Agent. Select **Streamable HTTP** transport.
+3. Set the MCP endpoint to the link URL and configure a Bearer Auth credential with a DataMCP API key. The agent token only authenticates the outbound tunnel; do not use it as the n8n Bearer credential.
+4. Test schema discovery and a small `SELECT` before enabling a scheduled workflow.
+
+The database password stays with the agent, but SQL and query results travel through DataMCP and can also appear in n8n execution history.
 
 ## Configuration
 
@@ -74,9 +77,12 @@ CLI flags win over environment variables.
 
 | Flag | Env | Required | Description |
 | --- | --- | --- | --- |
-| `--db` | `DATAMCP_DB_URL` | Yes | PostgreSQL URL. Stays local to the agent. |
-| `--api-key` | `DATAMCP_API_KEY` | Registered only | DataMCP API key for account-bound tunnel auth. |
-| `--connection-id` | `DATAMCP_CONNECTION_ID` | Registered only | DataMCP connection id. |
+| `--db` or `ro <url>` | `DATAMCP_DB_URL` | Yes | PostgreSQL URL. Stays local to the agent. `ro` also applies a local read-only ceiling. |
+| `--agent-token` | `DATAMCP_AGENT_TOKEN` | Recommended | Connection-scoped token shown once during Local Agent setup. |
+| `--api-key` | `DATAMCP_API_KEY` | Legacy only | Account API key for older tunnel connections. |
+| `--connection-id` | `DATAMCP_CONNECTION_ID` | Yes | DataMCP connection id. |
+| `--stage` | `DATAMCP_STAGE` | No | `production`, `qa`, or `development`; defaults to production. |
+| `ro` | `DATAMCP_READ_ONLY=true` | Recommended | Local read-only ceiling. Enabled in the Docker and Kubernetes examples. |
 | `--cloud-url` | `DATAMCP_CLOUD_URL` | No | DataMCP cloud URL. Default: `wss://api.datamcp.app`. |
 | `--agent-name` | `AGENT_NAME` | No | Friendly name shown in DataMCP. |
 | `--log-level` | `LOG_LEVEL` | No | `debug`, `info`, `warn`, or `error`. |
@@ -97,9 +103,9 @@ curl http://localhost:3000/ready
 
 - Database credentials stay on the machine running the agent.
 - The cloud sends SQL requests over an outbound WebSocket; it does not receive the DB URL.
-- The database user should still be least-privilege. Read-only MCP links should use a read-only DB role.
+- The database user should still be least-privilege. Read-only MCP links should use a read-only DB role. `ro` prevents write requests from the cloud, but is not a substitute for database privileges.
 - Do not paste agent tokens, API keys, claim tokens, or database URLs into logs or support tickets.
-- Anonymous claim URLs are bearer secrets. Treat them as temporary one-time secrets.
+- The dashboard's generated command uses `ro`. For stronger isolation, use a database role with only the SQL privileges the workflow needs.
 
 ## Release process
 

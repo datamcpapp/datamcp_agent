@@ -5,7 +5,6 @@ import { logger } from './utils/logger';
 import { AgentService } from './services/agent.service';
 import { DatabaseService } from './services/database.service';
 import { HealthService } from './services/health.service';
-import { anonymousBootstrap, printBootstrapResult } from './services/bootstrap.service';
 import { VERSION } from './version';
 
 async function main() {
@@ -28,10 +27,11 @@ async function main() {
       name: config.agentName,
     });
 
-    const databaseService = new DatabaseService(config.databaseUrl);
+    const databaseService = new DatabaseService(
+      config.databaseUrl,
+      config.readOnlyCeiling,
+    );
 
-    // Preflight: bail early with a clear error if the local DB is unreachable
-    // (plan §10.7) — saves a round-trip to the cloud bootstrap endpoint.
     try {
       await databaseService.preflight();
       logger.info('Local database preflight OK');
@@ -41,24 +41,6 @@ async function main() {
       );
       console.error('Check your --db URL and that Postgres is running.\n');
       process.exit(2);
-    }
-
-    if (!config.connectionId) {
-      if (config.apiKey) {
-        // Registered flow without --connection-id: would need POST
-        // /api/agents/bootstrap (with api-key auth). Not implemented yet —
-        // require an explicit connectionId for the registered path until then.
-        console.error(
-          '\nRegistered bootstrap (--api-key without --connection-id) is not ' +
-            'implemented yet. Pass --connection-id <id> with your --api-key.\n',
-        );
-        process.exit(2);
-      }
-      // Anonymous flow: hit POST /api/agents/anonymous, print MCP + claim URLs.
-      const result = await anonymousBootstrap(config.cloudUrl);
-      config.connectionId = result.connectionId;
-      config.anonToken = result.anonToken;
-      printBootstrapResult(result);
     }
 
     const agentService = new AgentService(config, databaseService);

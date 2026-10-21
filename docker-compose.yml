@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   datamcp-agent:
     build:
@@ -10,11 +8,13 @@ services:
     
     # Environment variables
     environment:
-      # Required: Your agent API key from DataMCP dashboard
-      - DATAMCP_API_KEY=${DATAMCP_API_KEY}
+      - DATAMCP_AGENT_TOKEN=${DATAMCP_AGENT_TOKEN}
+      - DATAMCP_DB_URL=${DATAMCP_DB_URL}
+      - DATAMCP_CONNECTION_ID=${DATAMCP_CONNECTION_ID}
+      - DATAMCP_STAGE=${DATAMCP_STAGE:-production}
+      - DATAMCP_READ_ONLY=${DATAMCP_READ_ONLY:-true}
       
-      # Optional: DataMCP cloud URL (default: wss://api.datamcp.app)
-      - DATAMCP_CLOUD_URL=${DATAMCP_CLOUD_URL:-wss://api.datamcp.app}
+      - DATAMCP_CLOUD_URL=${DATAMCP_CLOUD_URL:-}
       
       # Optional: Friendly name for the agent
       - AGENT_NAME=${AGENT_NAME:-Docker Agent}
