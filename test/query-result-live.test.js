@@ -85,6 +85,16 @@ test(
       const count = await client.query("SELECT count(*)::int AS total FROM datamcp_agent_write_probe WHERE payload = 'changed'");
       assert.equal(count.rows[0].total, 2000);
 
+      const schema = await writable.extractSchema({ requestId: 'write-schema' });
+      assert.equal(schema.success, true, schema.error);
+      const table = schema.schema.tables.find((item) => item.name === 'datamcp_agent_write_probe');
+      assert.deepEqual(table.privileges, {
+        select: true,
+        insert: true,
+        update: true,
+        delete: true,
+      });
+
       const oversized = await writable.executeQuery({
         queryId: 'write-oversized',
         sql: "UPDATE datamcp_agent_write_probe SET payload = repeat('x', 600000) WHERE id = 1 RETURNING payload",

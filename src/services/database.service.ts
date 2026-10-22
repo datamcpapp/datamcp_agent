@@ -19,6 +19,10 @@ import {
 interface TableRow {
   table_schema: string;
   table_name: string;
+  can_select: boolean;
+  can_insert: boolean;
+  can_update: boolean;
+  can_delete: boolean;
   column_name: string;
   data_type: string;
   is_nullable: string;
@@ -206,6 +210,10 @@ export class DatabaseService {
       SELECT
         t.table_schema,
         t.table_name,
+        has_table_privilege(format('%I.%I', t.table_schema, t.table_name), 'SELECT') AS can_select,
+        has_table_privilege(format('%I.%I', t.table_schema, t.table_name), 'INSERT') AS can_insert,
+        has_table_privilege(format('%I.%I', t.table_schema, t.table_name), 'UPDATE') AS can_update,
+        has_table_privilege(format('%I.%I', t.table_schema, t.table_name), 'DELETE') AS can_delete,
         c.column_name,
         c.data_type,
         c.is_nullable,
@@ -236,6 +244,12 @@ export class DatabaseService {
           name: row.table_name,
           schema: row.table_schema,
           columns: [],
+          privileges: {
+            select: row.can_select === true,
+            insert: row.can_insert === true,
+            update: row.can_update === true,
+            delete: row.can_delete === true,
+          },
         });
       }
       const table = tablesMap.get(tableKey)!;

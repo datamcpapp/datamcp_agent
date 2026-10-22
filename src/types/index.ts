@@ -60,6 +60,12 @@ export interface TableSchema {
   name: string;
   schema: string;
   columns: ColumnSchema[];
+  privileges?: {
+    select: boolean;
+    insert: boolean;
+    update: boolean;
+    delete: boolean;
+  };
   primaryKey?: string[];
   foreignKeys?: ForeignKeySchema[];
   indexes?: IndexSchema[];
