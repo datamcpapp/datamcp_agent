@@ -12,6 +12,8 @@ import { DatabaseService } from './database.service';
 import * as os from 'os';
 import { VERSION } from '../version';
 
+const QUERY_HISTORY_TTL_MS = 11 * 60_000;
+
 /**
  * WebSocket client that connects this agent to api.datamcp.app/agents.
  *
@@ -132,7 +134,6 @@ export class AgentService {
         return;
       }
       this.inFlightQueries.add(request.queryId);
-      this.completedQueryIds.set(request.queryId, Date.now());
       void (async () => {
         let result: QueryResult;
         try {
@@ -146,6 +147,7 @@ export class AgentService {
           };
         }
         this.inFlightQueries.delete(request.queryId);
+        this.completedQueryIds.set(request.queryId, Date.now());
         this.pendingQueryResults.set(request.queryId, {
           result,
           createdAt: Date.now(),
@@ -229,7 +231,7 @@ export class AgentService {
   }
 
   private pruneQueryHistory(): void {
-    const cutoff = Date.now() - 120_000;
+    const cutoff = Date.now() - QUERY_HISTORY_TTL_MS;
     for (const [queryId, entry] of this.pendingQueryResults) {
       if (entry.createdAt < cutoff) this.pendingQueryResults.delete(queryId);
     }
