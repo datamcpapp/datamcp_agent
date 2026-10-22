@@ -25,6 +25,7 @@ export interface QueryRequest {
   params: unknown[];
   timeoutMs: number;
   readOnly?: boolean;
+  maxRows?: number;
 }
 
 export interface QueryResult {
@@ -33,6 +34,7 @@ export interface QueryResult {
   rows?: unknown[];
   fields?: { name: string }[];
   rowCount?: number;
+  truncated?: boolean;
   error?: string;
   duration: number;
 }

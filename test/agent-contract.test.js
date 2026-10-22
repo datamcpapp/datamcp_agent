@@ -109,7 +109,11 @@ test('runs read-only requests inside a read-only transaction', async () => {
   assert.deepEqual(calls, [
     'BEGIN TRANSACTION READ ONLY',
     'SET LOCAL statement_timeout = 30000',
-    { text: 'select 1', values: [], queryMode: 'extended' },
+    {
+      text: 'SELECT * FROM (\nselect 1\n) AS datamcp_result LIMIT 101',
+      values: [],
+      queryMode: 'extended',
+    },
     'ROLLBACK',
   ]);
 });

@@ -10,6 +10,11 @@ import {
   HealthCheckResult,
 } from '../types';
 import { logger } from '../utils/logger';
+import {
+  boundReadQuery,
+  capAgentRows,
+  resolveMaxRows,
+} from './query-result-policy';
 
 interface TableRow {
   table_schema: string;
@@ -86,6 +91,7 @@ export class DatabaseService {
     const startTime = Date.now();
     const { queryId, sql, params, timeoutMs = 30000 } = request;
     const readOnly = this.readOnlyCeiling || request.readOnly !== false;
+    const maxRows = resolveMaxRows(request.maxRows);
 
     logger.info(`Executing query ${queryId}`);
     let client: PoolClient | undefined;
@@ -103,11 +109,12 @@ export class DatabaseService {
       }
 
       const queryConfig: QueryConfig & { queryMode: 'extended' } = {
-        text: sql,
+        text: readOnly ? boundReadQuery(sql, maxRows) : sql,
         values: params ?? [],
         queryMode: 'extended',
       };
       const result: QueryResult = await client.query(queryConfig);
+      const capped = capAgentRows(result.rows, maxRows);
 
       const duration = Date.now() - startTime;
       logger.info(`Query ${queryId} ok`, { duration, rowCount: result.rowCount });
@@ -115,9 +122,10 @@ export class DatabaseService {
       return {
         queryId,
         success: true,
-        rows: result.rows,
+        rows: capped.rows,
         fields: (result.fields ?? []).map((f) => ({ name: f.name })),
-        rowCount: result.rowCount ?? 0,
+        rowCount: readOnly ? capped.rows.length : (result.rowCount ?? 0),
+        truncated: capped.truncated,
         duration,
       };
     } catch (error) {
