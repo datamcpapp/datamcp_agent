@@ -70,15 +70,6 @@ The anonymous, account-free flow is not supported end to end yet. Create a Local
 
 On QA, the backend requires `ENABLE_AGENT_DEPLOYMENT=true` and the dashboard requires `NEXT_PUBLIC_ENABLE_AGENT_DEPLOYMENT=true`. Keep both disabled in production until QA validation is complete.
 
-### Use from n8n
-
-1. Create an MCP link for the Local Agent connection in DataMCP and choose a read-only scope.
-2. In n8n, add **MCP Client** for a normal workflow step or **MCP Client Tool** under an AI Agent. Select **Streamable HTTP** transport.
-3. Set the MCP endpoint to the link URL and configure a Bearer Auth credential with a DataMCP API key. The agent token only authenticates the outbound tunnel; do not use it as the n8n Bearer credential.
-4. Test schema discovery and a small `SELECT` before enabling a scheduled workflow.
-
-The database password stays with the agent, but SQL and query results travel through DataMCP and can also appear in n8n execution history.
-
 ## Configuration
 
 CLI flags win over environment variables.
