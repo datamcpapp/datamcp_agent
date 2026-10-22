@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { DatabaseService } = require('../dist/services/database.service');
+const { Client } = require('pg');
 
 const databaseUrl = process.env.DATAMCP_TEST_DATABASE_URL;
 
@@ -56,5 +57,57 @@ test(
   } finally {
     await database.closeAll();
   }
+  },
+);
+
+test(
+  'real PostgreSQL commits bounded writes, rolls back oversized results, and enforces the local ceiling',
+  { skip: !databaseUrl || process.env.DATAMCP_TEST_WRITE !== '1' },
+  async () => {
+    const client = new Client({ connectionString: databaseUrl });
+    const writable = new DatabaseService(databaseUrl);
+    const capped = new DatabaseService(databaseUrl, true);
+    await client.connect();
+    try {
+      await client.query('CREATE TABLE datamcp_agent_write_probe (id integer PRIMARY KEY, payload text)');
+      await client.query("INSERT INTO datamcp_agent_write_probe SELECT n, 'original' FROM generate_series(1, 2000) n");
+
+      const update = await writable.executeQuery({
+        queryId: 'write-returning',
+        sql: "UPDATE datamcp_agent_write_probe SET payload = 'changed' RETURNING id, payload",
+        maxRows: 100,
+        readOnly: false,
+      });
+      assert.equal(update.success, true, update.error);
+      assert.equal(update.rowCount, 2000);
+      assert.equal(update.rows.length, 100);
+      assert.equal(update.truncated, true);
+      const count = await client.query("SELECT count(*)::int AS total FROM datamcp_agent_write_probe WHERE payload = 'changed'");
+      assert.equal(count.rows[0].total, 2000);
+
+      const oversized = await writable.executeQuery({
+        queryId: 'write-oversized',
+        sql: "UPDATE datamcp_agent_write_probe SET payload = repeat('x', 600000) WHERE id = 1 RETURNING payload",
+        maxRows: 100,
+        readOnly: false,
+      });
+      assert.equal(oversized.success, false);
+      assert.match(oversized.error, /response size limit/);
+      const unchanged = await client.query('SELECT payload FROM datamcp_agent_write_probe WHERE id = 1');
+      assert.equal(unchanged.rows[0].payload, 'changed');
+
+      const forbidden = await capped.executeQuery({
+        queryId: 'local-ceiling',
+        sql: "UPDATE datamcp_agent_write_probe SET payload = 'forbidden' WHERE id = 1 RETURNING id",
+        readOnly: false,
+      });
+      assert.equal(forbidden.success, false);
+      assert.match(forbidden.error, /Read-only tunnel queries/);
+    } finally {
+      await client.query('DROP TABLE IF EXISTS datamcp_agent_write_probe');
+      await client.end();
+      await writable.closeAll();
+      await capped.closeAll();
+    }
   },
 );

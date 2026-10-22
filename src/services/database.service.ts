@@ -1,4 +1,4 @@
-import { Pool, PoolClient, QueryConfig, QueryResult } from 'pg';
+import { Pool, PoolClient, Query, QueryConfig, QueryResult } from 'pg';
 import {
   QueryRequest,
   QueryResult as AgentQueryResult,
@@ -12,7 +12,7 @@ import {
 import { logger } from '../utils/logger';
 import {
   boundReadQuery,
-  capAgentRows,
+  createAgentRowCollector,
   resolveMaxRows,
 } from './query-result-policy';
 
@@ -95,26 +95,33 @@ export class DatabaseService {
 
     logger.info(`Executing query ${queryId}`);
     let client: PoolClient | undefined;
+    let inTransaction = false;
     try {
       client = await this.getPool().connect();
       const clampedTimeout = Math.max(
         1000,
         Math.min(600_000, Math.floor(timeoutMs)),
       );
-      if (readOnly) {
-        await client.query('BEGIN TRANSACTION READ ONLY');
-        await client.query(`SET LOCAL statement_timeout = ${clampedTimeout}`);
-      } else {
-        await client.query(`SET statement_timeout = ${clampedTimeout}`);
-      }
+      await client.query(readOnly ? 'BEGIN TRANSACTION READ ONLY' : 'BEGIN');
+      inTransaction = true;
+      await client.query(`SET LOCAL statement_timeout = ${clampedTimeout}`);
 
       const queryConfig: QueryConfig & { queryMode: 'extended' } = {
         text: readOnly ? boundReadQuery(sql, maxRows) : sql,
         values: params ?? [],
         queryMode: 'extended',
       };
-      const result: QueryResult = await client.query(queryConfig);
-      const capped = capAgentRows(result.rows, maxRows);
+      const collector = createAgentRowCollector<Record<string, unknown>>(maxRows);
+      const streamingQuery = new Query(queryConfig);
+      streamingQuery.on('row', (row) => collector.add(row));
+      const result = await new Promise<QueryResult>((resolve, reject) => {
+        streamingQuery.once('error', reject);
+        streamingQuery.once('end', resolve);
+        client!.query(streamingQuery);
+      });
+      const capped = collector.finish();
+      await client.query('COMMIT');
+      inTransaction = false;
 
       const duration = Date.now() - startTime;
       logger.info(`Query ${queryId} ok`, { duration, rowCount: result.rowCount });
@@ -140,9 +147,7 @@ export class DatabaseService {
       };
     } finally {
       if (client) {
-        await client
-          .query(readOnly ? 'ROLLBACK' : 'RESET statement_timeout')
-          .catch(() => {});
+        if (inTransaction) await client.query('ROLLBACK').catch(() => {});
         client.release();
       }
     }

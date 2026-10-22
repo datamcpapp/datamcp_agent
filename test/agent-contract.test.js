@@ -99,6 +99,14 @@ test('runs read-only requests inside a read-only transaction', async () => {
   const calls = [];
   const client = {
     query: async (sql) => {
+      if (typeof sql === 'object') {
+        calls.push({ text: sql.text, values: sql.values, queryMode: sql.queryMode });
+        process.nextTick(() => {
+          sql.emit('row', { one: 1 });
+          sql.emit('end', { fields: [{ name: 'one' }], rowCount: 1 });
+        });
+        return sql;
+      }
       calls.push(sql);
       return { rows: [{ one: 1 }], fields: [{ name: 'one' }], rowCount: 1 };
     },
@@ -122,7 +130,7 @@ test('runs read-only requests inside a read-only transaction', async () => {
       values: [],
       queryMode: 'extended',
     },
-    'ROLLBACK',
+    'COMMIT',
   ]);
 });
 
@@ -130,6 +138,10 @@ test('local read-only ceiling overrides cloud write requests', async () => {
   const calls = [];
   const client = {
     query: async (sql) => {
+      if (typeof sql === 'object') {
+        process.nextTick(() => sql.emit('end', { fields: [], rowCount: 0 }));
+        return sql;
+      }
       calls.push(sql);
       return { rows: [], fields: [], rowCount: 0 };
     },
@@ -145,5 +157,5 @@ test('local read-only ceiling overrides cloud write requests', async () => {
   });
 
   assert.equal(calls[0], 'BEGIN TRANSACTION READ ONLY');
-  assert.equal(calls.at(-1), 'ROLLBACK');
+  assert.equal(calls.at(-1), 'COMMIT');
 });
