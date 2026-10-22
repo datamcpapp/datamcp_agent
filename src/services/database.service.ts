@@ -100,6 +100,7 @@ export class DatabaseService {
     logger.info(`Executing query ${queryId}`);
     let client: PoolClient | undefined;
     let inTransaction = false;
+    let commitStarted = false;
     try {
       client = await this.getPool().connect();
       const clampedTimeout = Math.max(
@@ -124,6 +125,7 @@ export class DatabaseService {
         client!.query(streamingQuery);
       });
       const capped = collector.finish();
+      commitStarted = true;
       await client.query('COMMIT');
       inTransaction = false;
 
@@ -141,7 +143,12 @@ export class DatabaseService {
       };
     } catch (error) {
       const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        commitStarted && !readOnly
+          ? 'Write outcome unknown: COMMIT may have succeeded. Check the data before retrying.'
+          : error instanceof Error
+            ? error.message
+            : 'Unknown error';
       logger.error(`Query ${queryId} failed`, { error: errorMessage, duration });
       return {
         queryId,

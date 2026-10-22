@@ -2,6 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import {
   AgentConfig,
   QueryRequest,
+  QueryResult,
   SchemaRequest,
   HealthCheckRequest,
   HeartbeatData,
@@ -24,9 +25,15 @@ export class AgentService {
   private socket: Socket | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private reconnectAttempts = 0;
-  private readonly maxReconnectAttempts = 10;
   private readonly reconnectDelay = 5000;
+  private readonly pendingQueryResults = new Map<
+    string,
+    { result: QueryResult; createdAt: number }
+  >();
+  private readonly inFlightQueries = new Set<string>();
+  private readonly completedQueryIds = new Map<string, number>();
   private isShuttingDown = false;
+  private isAuthenticated = false;
   private agentId: string | null = null;
 
   constructor(
@@ -63,7 +70,7 @@ export class AgentService {
       auth,
       reconnection: true,
       reconnectionDelay: this.reconnectDelay,
-      reconnectionAttempts: this.maxReconnectAttempts,
+      reconnectionAttempts: Infinity,
       timeout: 10000,
     });
 
@@ -76,8 +83,12 @@ export class AgentService {
     this.socket.on('connected', (data: { connectionId?: string; agentId?: string }) => {
       this.agentId = data.agentId ?? null;
       this.reconnectAttempts = 0;
+      this.isAuthenticated = true;
       logger.info('Connected to DataMCP cloud', { agentId: this.agentId });
       this.startHeartbeat();
+      for (const { result } of this.pendingQueryResults.values()) {
+        this.socket?.emit('query_result', result);
+      }
     });
 
     this.socket.on('connect_error', (error: Error) => {
@@ -85,16 +96,12 @@ export class AgentService {
       logger.error('Connection error', {
         error: error.message,
         attempt: this.reconnectAttempts,
-        maxAttempts: this.maxReconnectAttempts,
       });
-      if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-        logger.error('Max reconnection attempts reached. Exiting...');
-        void this.stop().then(() => process.exit(1));
-      }
     });
 
     this.socket.on('disconnect', (reason: string) => {
       logger.warn('Disconnected from DataMCP cloud', { reason });
+      this.isAuthenticated = false;
       this.stopHeartbeat();
       if (reason === 'io server disconnect') {
         logger.info('Attempting to reconnect...');
@@ -108,19 +115,48 @@ export class AgentService {
 
     this.socket.on('execute_query', (request: QueryRequest) => {
       logger.info('Received query execution request', { queryId: request.queryId });
+      this.pruneQueryHistory();
+      const cached = this.pendingQueryResults.get(request.queryId);
+      if (cached) {
+        this.sendQueryResult(cached.result);
+        return;
+      }
+      if (this.inFlightQueries.has(request.queryId)) return;
+      if (this.completedQueryIds.has(request.queryId)) {
+        this.sendQueryResult({
+          queryId: request.queryId,
+          success: false,
+          error: 'Query was already executed; result is no longer available',
+          duration: 0,
+        });
+        return;
+      }
+      this.inFlightQueries.add(request.queryId);
+      this.completedQueryIds.set(request.queryId, Date.now());
       void (async () => {
+        let result: QueryResult;
         try {
-          const result = await this.databaseService.executeQuery(request);
-          this.socket?.emit('query_result', result);
+          result = await this.databaseService.executeQuery(request);
         } catch (error) {
-          this.socket?.emit('query_result', {
+          result = {
             queryId: request.queryId,
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error',
             duration: 0,
-          });
+          };
         }
+        this.inFlightQueries.delete(request.queryId);
+        this.pendingQueryResults.set(request.queryId, {
+          result,
+          createdAt: Date.now(),
+        });
+        this.pruneQueryHistory();
+        this.sendQueryResult(result);
       })();
+    });
+
+    this.socket.on('query_ack', (message: { queryId?: string }) => {
+      if (message?.queryId) this.pendingQueryResults.delete(message.queryId);
     });
 
     this.socket.on('extract_schema', (request: SchemaRequest) => {
@@ -186,9 +222,37 @@ export class AgentService {
     this.socket.emit('heartbeat', heartbeat);
   }
 
+  private sendQueryResult(result: QueryResult): void {
+    if (this.isAuthenticated && this.socket?.connected) {
+      this.socket.emit('query_result', result);
+    }
+  }
+
+  private pruneQueryHistory(): void {
+    const cutoff = Date.now() - 120_000;
+    for (const [queryId, entry] of this.pendingQueryResults) {
+      if (entry.createdAt < cutoff) this.pendingQueryResults.delete(queryId);
+    }
+    while (this.pendingQueryResults.size > 32) {
+      const oldest = this.pendingQueryResults.keys().next().value;
+      if (!oldest) break;
+      this.pendingQueryResults.delete(oldest);
+      logger.warn('Unacknowledged query result evicted', { queryId: oldest });
+    }
+    for (const [queryId, createdAt] of this.completedQueryIds) {
+      if (createdAt < cutoff) this.completedQueryIds.delete(queryId);
+    }
+    while (this.completedQueryIds.size > 1024) {
+      const oldest = this.completedQueryIds.keys().next().value;
+      if (!oldest) break;
+      this.completedQueryIds.delete(oldest);
+    }
+  }
+
   async stop(): Promise<void> {
     if (this.isShuttingDown) return;
     this.isShuttingDown = true;
+    this.isAuthenticated = false;
     logger.info('Stopping DataMCP Agent...');
     this.stopHeartbeat();
     if (this.socket) {

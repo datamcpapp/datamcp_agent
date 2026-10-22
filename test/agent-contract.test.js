@@ -159,3 +159,28 @@ test('local read-only ceiling overrides cloud write requests', async () => {
   assert.equal(calls[0], 'BEGIN TRANSACTION READ ONLY');
   assert.equal(calls.at(-1), 'COMMIT');
 });
+
+test('reports an unknown write outcome if the COMMIT response is lost', async () => {
+  const client = {
+    query: async (sql) => {
+      if (typeof sql === 'object') {
+        process.nextTick(() => sql.emit('end', { fields: [], rowCount: 1 }));
+        return sql;
+      }
+      if (sql === 'COMMIT') throw new Error('connection closed');
+      return { rows: [], fields: [], rowCount: 0 };
+    },
+    release: () => {},
+  };
+  const database = new DatabaseService('postgres://localhost/app');
+  database.pool = { connect: async () => client };
+
+  const result = await database.executeQuery({
+    queryId: 'query_commit',
+    sql: 'UPDATE private_probe SET label = label',
+    readOnly: false,
+  });
+
+  assert.equal(result.success, false);
+  assert.match(result.error, /Write outcome unknown/);
+});
