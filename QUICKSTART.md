@@ -50,5 +50,3 @@ datamcp-agent --version
 datamcp-agent --help
 curl http://localhost:3000/ready
 ```
-
-For n8n, create an MCP link on the connection and use its URL in an MCP Client or MCP Client Tool node with a DataMCP Bearer credential.
