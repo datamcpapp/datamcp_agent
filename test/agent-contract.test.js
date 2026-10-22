@@ -2,6 +2,14 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { loadConfig } = require('../dist/utils/config');
 const { DatabaseService } = require('../dist/services/database.service');
+const { execFileSync } = require('node:child_process');
+
+test('reports the published package version', () => {
+  const actual = execFileSync(process.execPath, ['dist/index.js', '--version'], {
+    encoding: 'utf8',
+  }).trim();
+  assert.equal(actual, require('../package.json').version);
+});
 
 test('accepts the dashboard command for a QA read-only tunnel', async () => {
   const config = await loadConfig([

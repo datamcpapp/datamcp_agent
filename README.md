@@ -37,14 +37,14 @@ brew install datamcp-agent
 Build an image from the published npm package; no repository checkout or GitHub authentication is required:
 
 ```bash
-docker build -t datamcp-agent:0.1.2 - <<'DOCKERFILE'
+docker build -t datamcp-agent:0.1.4 - <<'DOCKERFILE'
 FROM node:22-alpine
-RUN npm install -g @datamcp/agent@0.1.2
+RUN npm install -g @datamcp/agent@0.1.4
 USER node
 ENTRYPOINT ["datamcp-agent"]
 DOCKERFILE
 
-docker run --rm --network host --env-file .env.agent datamcp-agent:0.1.2
+docker run --rm --network host --env-file .env.agent datamcp-agent:0.1.4
 ```
 
 On Linux, `--network host` lets the container reach a database bound to `127.0.0.1`. On Docker Desktop, omit `--network host` and use `host.docker.internal` in `DATAMCP_DB_URL`.
@@ -115,7 +115,7 @@ curl http://localhost:3000/ready
 
 ## Release process
 
-1. Update `package.json` and `src/version.ts` to the new version.
+1. Update the version in `package.json` and `package-lock.json`. The CLI reads it from `package.json`.
 2. Run:
 
 ```bash
@@ -125,8 +125,8 @@ curl http://localhost:3000/ready
 3. Create a Git tag:
 
 ```bash
-git tag v0.1.2
-git push origin v0.1.2
+git tag v0.1.4
+git push origin v0.1.4
 ```
 
 4. GitHub Actions publishes:
