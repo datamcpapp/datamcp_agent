@@ -34,14 +34,20 @@ brew install datamcp-agent
 
 ### Docker
 
+Build an image from the published npm package; no repository checkout or GitHub authentication is required:
+
 ```bash
-docker run --rm \
-  -e DATAMCP_DB_URL='postgresql://user:password@host.docker.internal:5432/app' \
-  -e DATAMCP_CONNECTION_ID="$DATAMCP_CONNECTION_ID" \
-  -e DATAMCP_AGENT_TOKEN="$YOUR_DATAMCP_AGENT_TOKEN" \
-  -e DATAMCP_STAGE=qa \
-  ghcr.io/datamcpapp/agent:latest
+docker build -t datamcp-agent:0.1.2 - <<'DOCKERFILE'
+FROM node:22-alpine
+RUN npm install -g @datamcp/agent@0.1.2
+USER node
+ENTRYPOINT ["datamcp-agent"]
+DOCKERFILE
+
+docker run --rm --network host --env-file .env.agent datamcp-agent:0.1.2
 ```
+
+On Linux, `--network host` lets the container reach a database bound to `127.0.0.1`. On Docker Desktop, omit `--network host` and use `host.docker.internal` in `DATAMCP_DB_URL`.
 
 ## Quick start
 
@@ -119,13 +125,13 @@ curl http://localhost:3000/ready
 3. Create a Git tag:
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.1.2
+git push origin v0.1.2
 ```
 
 4. GitHub Actions publishes:
    - npm package: `@datamcp/agent`
-   - Docker image: `ghcr.io/datamcpapp/agent`
+   - Docker image: `ghcr.io/datamcpapp/agent` (currently private to the organization; use the npm-based Docker build above for public installs)
 
 5. Update the Homebrew formula tarball SHA in `datamcpapp/homebrew-tap`.
 
