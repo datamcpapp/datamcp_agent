@@ -105,6 +105,7 @@ curl http://localhost:3000/ready
 - The database user should still be least-privilege. Read-only MCP links should use a read-only DB role. `ro` prevents write requests from the cloud, but is not a substitute for database privileges.
 - Do not paste agent tokens, API keys, claim tokens, or database URLs into logs or support tickets.
 - The dashboard's generated command uses `ro`. For stronger isolation, use a database role with only the SQL privileges the workflow needs.
+- A write can have an unknown outcome if the agent or network fails near `COMMIT`. Check the database before retrying. Replay protection is in memory and does not provide exactly-once execution across agent restarts.
 
 ## Release process
 
