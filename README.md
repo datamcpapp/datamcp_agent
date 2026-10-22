@@ -6,7 +6,7 @@ The agent runs inside your network, connects outbound to DataMCP Cloud over WebS
 
 ## Install
 
-Install the agent with npm or npx. Create a Local Agent connection in the dashboard before running it; the dashboard supplies the connection ID and a one-time agent token. Homebrew is not available until the tap is published.
+Install the agent with npm, npx, or Homebrew. Create a Local Agent connection in the dashboard before running it; the dashboard supplies the connection ID and a one-time agent token.
 
 ### npx
 
@@ -23,7 +23,7 @@ DATAMCP_AGENT_TOKEN="$YOUR_DATAMCP_AGENT_TOKEN" datamcp-agent ro \
   "$DATABASE_URL" --stage qa --connection-id "$DATAMCP_CONNECTION_ID"
 ```
 
-### Homebrew (after the tap is published)
+### Homebrew
 
 Homebrew uses the same official npm package under the hood:
 
@@ -31,6 +31,8 @@ Homebrew uses the same official npm package under the hood:
 brew tap datamcpapp/tap
 brew install datamcp-agent
 ```
+
+Homebrew 7 may ask you to trust a third-party formula first. Trust only this formula with `brew trust --formula datamcpapp/tap/datamcp-agent`, then run the install command again.
 
 ### Docker
 
@@ -103,6 +105,7 @@ curl http://localhost:3000/ready
 - The database user should still be least-privilege. Read-only MCP links should use a read-only DB role. `ro` prevents write requests from the cloud, but is not a substitute for database privileges.
 - Do not paste agent tokens, API keys, claim tokens, or database URLs into logs or support tickets.
 - The dashboard's generated command uses `ro`. For stronger isolation, use a database role with only the SQL privileges the workflow needs.
+- A write can have an unknown outcome if the agent or network fails near `COMMIT`. Check the database before retrying. Replay protection is in memory and does not provide exactly-once execution across agent restarts.
 
 ## Release process
 
@@ -124,7 +127,7 @@ git push origin "v$(node -p 'require("./package.json").version')"
    - npm package: `@datamcp/agent`
    - Docker image: `ghcr.io/datamcpapp/agent` (currently private to the organization; use the npm-based Docker build above for public installs)
 
-5. Update the Homebrew formula tarball SHA in `datamcpapp/homebrew-tap`.
+5. The [Homebrew tap](https://github.com/datamcpapp/homebrew-tap) checks npm `latest` every six hours and updates its formula automatically. Run its `Update agent formula` workflow manually to make a new release available immediately.
 
 ## License
 

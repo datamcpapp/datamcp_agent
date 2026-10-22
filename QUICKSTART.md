@@ -1,6 +1,6 @@
 # DataMCP Agent Quickstart
 
-Install with `npx @datamcp/agent` for a one-off run or `npm install -g @datamcp/agent` for a persistent command. The Homebrew tap is not available yet.
+Install with `npx @datamcp/agent` for a one-off run, `npm install -g @datamcp/agent` for a persistent command, or Homebrew on macOS and Linux.
 
 ## Fastest path
 
