@@ -6,7 +6,7 @@ The agent runs inside your network, connects outbound to DataMCP Cloud over WebS
 
 ## Install
 
-Install the agent with npm or npx. Create a Local Agent connection in the dashboard before running it; the dashboard supplies the connection ID and a one-time agent token. Homebrew is not available until the tap is published.
+Install the agent with npm, npx, or Homebrew. Create a Local Agent connection in the dashboard before running it; the dashboard supplies the connection ID and a one-time agent token.
 
 ### npx
 
@@ -23,7 +23,7 @@ DATAMCP_AGENT_TOKEN="$YOUR_DATAMCP_AGENT_TOKEN" datamcp-agent ro \
   "$DATABASE_URL" --stage qa --connection-id "$DATAMCP_CONNECTION_ID"
 ```
 
-### Homebrew (after the tap is published)
+### Homebrew
 
 Homebrew uses the same official npm package under the hood:
 
@@ -31,6 +31,8 @@ Homebrew uses the same official npm package under the hood:
 brew tap datamcpapp/tap
 brew install datamcp-agent
 ```
+
+Homebrew 7 may ask you to trust a third-party formula first. Trust only this formula with `brew trust --formula datamcpapp/tap/datamcp-agent`, then run the install command again.
 
 ### Docker
 
@@ -133,7 +135,7 @@ git push origin "v$(node -p 'require("./package.json").version')"
    - npm package: `@datamcp/agent`
    - Docker image: `ghcr.io/datamcpapp/agent` (currently private to the organization; use the npm-based Docker build above for public installs)
 
-5. Update the Homebrew formula tarball SHA in `datamcpapp/homebrew-tap`.
+5. The [Homebrew tap](https://github.com/datamcpapp/homebrew-tap) checks npm `latest` every six hours and updates its formula automatically. Run its `Update agent formula` workflow manually to make a new release available immediately.
 
 ## License
 
