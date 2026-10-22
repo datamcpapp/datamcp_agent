@@ -6,7 +6,7 @@ The agent runs inside your network, connects outbound to DataMCP Cloud over WebS
 
 ## Install
 
-The npm package and Homebrew tap have not been published yet. The commands below are the intended install paths after the first release. For QA development, build and run this repository locally with `npm ci && npm run build`, then replace `npx @datamcp/agent` with `node dist/index.js` in the dashboard command.
+Install the agent with npm or npx. Create a Local Agent connection in the dashboard before running it; the dashboard supplies the connection ID and a one-time agent token. Homebrew is not available until the tap is published.
 
 ### npx
 
@@ -119,8 +119,8 @@ curl http://localhost:3000/ready
 3. Create a Git tag:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 4. GitHub Actions publishes:
