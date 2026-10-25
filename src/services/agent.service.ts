@@ -36,6 +36,7 @@ export class AgentService {
   private readonly completedQueryIds = new Map<string, number>();
   private isShuttingDown = false;
   private isAuthenticated = false;
+  private authenticationRejected = false;
   private agentId: string | null = null;
 
   constructor(
@@ -86,6 +87,7 @@ export class AgentService {
       this.agentId = data.agentId ?? null;
       this.reconnectAttempts = 0;
       this.isAuthenticated = true;
+      this.authenticationRejected = false;
       logger.info('Connected to DataMCP cloud', { agentId: this.agentId });
       this.startHeartbeat();
       for (const { result } of this.pendingQueryResults.values()) {
@@ -105,7 +107,7 @@ export class AgentService {
       logger.warn('Disconnected from DataMCP cloud', { reason });
       this.isAuthenticated = false;
       this.stopHeartbeat();
-      if (reason === 'io server disconnect') {
+      if (reason === 'io server disconnect' && !this.authenticationRejected) {
         logger.info('Attempting to reconnect...');
         this.socket?.connect();
       }
@@ -113,6 +115,11 @@ export class AgentService {
 
     this.socket.on('error', (error: { message: string }) => {
       logger.error('WebSocket error', { error: error.message });
+      if (error.message === 'invalid agent token') {
+        this.authenticationRejected = true;
+        logger.error('Agent token rejected. Update the tunnel credentials and restart the agent.');
+        this.socket?.disconnect();
+      }
     });
 
     this.socket.on('execute_query', (request: QueryRequest) => {
