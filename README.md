@@ -12,7 +12,7 @@ Install the agent with npm, npx, or Homebrew. Create a Local Agent connection in
 
 ```bash
 DATAMCP_AGENT_TOKEN="$YOUR_DATAMCP_AGENT_TOKEN" npx @datamcp/agent ro \
-  "$DATABASE_URL" --stage qa --connection-id "$DATAMCP_CONNECTION_ID"
+  "$DATABASE_URL" --connection-id "$DATAMCP_CONNECTION_ID"
 ```
 
 ### npm global
@@ -20,7 +20,7 @@ DATAMCP_AGENT_TOKEN="$YOUR_DATAMCP_AGENT_TOKEN" npx @datamcp/agent ro \
 ```bash
 npm install -g @datamcp/agent
 DATAMCP_AGENT_TOKEN="$YOUR_DATAMCP_AGENT_TOKEN" datamcp-agent ro \
-  "$DATABASE_URL" --stage qa --connection-id "$DATAMCP_CONNECTION_ID"
+  "$DATABASE_URL" --connection-id "$DATAMCP_CONNECTION_ID"
 ```
 
 ### Homebrew
@@ -60,7 +60,6 @@ Use this for a dashboard-created connection:
 ```bash
 DATAMCP_AGENT_TOKEN="$YOUR_DATAMCP_AGENT_TOKEN" datamcp-agent \
   ro "$DATABASE_URL" \
-  --stage qa \
   --connection-id "$DATAMCP_CONNECTION_ID"
 ```
 
@@ -68,24 +67,22 @@ The dashboard generates the complete command. `ro` is a local read-only ceiling;
 
 The anonymous, account-free flow is not supported end to end yet. Create a Local Agent connection in the dashboard first.
 
-On QA, the backend requires `ENABLE_AGENT_DEPLOYMENT=true` and the dashboard requires `NEXT_PUBLIC_ENABLE_AGENT_DEPLOYMENT=true`. Keep both disabled in production until QA validation is complete.
-
 ## Configuration
 
 CLI flags win over environment variables.
 
-| Flag | Env | Required | Description |
+For a dashboard-created tunnel, the database URL, connection ID, and one-time agent token are required. `ro` or `DATAMCP_READ_ONLY=true` is recommended for read-only access. All other settings below are optional; you can omit them and use the defaults.
+
+| Flag | Env | Status | Description |
 | --- | --- | --- | --- |
-| `--db` or `ro <url>` | `DATAMCP_DB_URL` | Yes | PostgreSQL URL. Stays local to the agent. `ro` also applies a local read-only ceiling. |
-| `--agent-token` | `DATAMCP_AGENT_TOKEN` | Recommended | Connection-scoped token shown once during Local Agent setup. |
+| `--db` or `ro <url>` | `DATAMCP_DB_URL` | Required | PostgreSQL URL. Stays local to the agent. `ro` also applies a local read-only ceiling. |
+| `--agent-token` | `DATAMCP_AGENT_TOKEN` | Required | Connection-scoped token shown once during Local Agent setup. |
 | `--api-key` | `DATAMCP_API_KEY` | Legacy only | Account API key for older tunnel connections. |
-| `--connection-id` | `DATAMCP_CONNECTION_ID` | Yes | DataMCP connection id. |
-| `--stage` | `DATAMCP_STAGE` | No | `production`, `qa`, or `development`; defaults to production. |
+| `--connection-id` | `DATAMCP_CONNECTION_ID` | Required | DataMCP connection ID. |
 | `ro` | `DATAMCP_READ_ONLY=true` | Recommended | Local read-only ceiling. Enabled in the Docker and Kubernetes examples. |
-| `--cloud-url` | `DATAMCP_CLOUD_URL` | No | DataMCP cloud URL. Default: `wss://api.datamcp.app`. |
-| `--agent-name` | `AGENT_NAME` | No | Friendly name shown in DataMCP. |
-| `--log-level` | `LOG_LEVEL` | No | `debug`, `info`, `warn`, or `error`. |
-| `--port` | `PORT` | No | Local health server port. Default: `3000`. |
+| `--agent-name` | `AGENT_NAME` | Optional | Cosmetic display name; defaults to the machine hostname. It does not affect access or routing. |
+| `--log-level` | `LOG_LEVEL` | Optional | `debug`, `info`, `warn`, or `error`; defaults to `info`. |
+| `--port` | `PORT` | Optional | Local health-check port; defaults to `3000`. Do not expose it publicly. |
 
 ## Health checks
 

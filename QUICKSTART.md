@@ -9,7 +9,7 @@ Create a Local Agent connection in the DataMCP dashboard, save its connection ID
 ```bash
 DATAMCP_AGENT_TOKEN="$YOUR_DATAMCP_AGENT_TOKEN" npx @datamcp/agent ro \
   'postgresql://user:password@localhost:5432/app' \
-  --stage qa --connection-id "$DATAMCP_CONNECTION_ID"
+  --connection-id "$DATAMCP_CONNECTION_ID"
 ```
 
 The agent will:
@@ -26,8 +26,7 @@ Create a tunnel connection in DataMCP Dashboard and run the generated command:
 datamcp-agent \
   ro "$DATABASE_URL" \
   --agent-token "$DATAMCP_AGENT_TOKEN" \
-  --connection-id "$DATAMCP_CONNECTION_ID" \
-  --stage qa
+  --connection-id "$DATAMCP_CONNECTION_ID"
 ```
 
 ## Install options
