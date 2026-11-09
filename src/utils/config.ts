@@ -68,7 +68,7 @@ export function printHelp(): void {
   console.log(`DataMCP Agent
 
 Usage:
-  datamcp-agent ro <postgresql://...> --stage qa --connection-id <conn_...>
+  datamcp-agent ro <postgresql://...> --connection-id <conn_...>
   datamcp-agent --db <postgresql://...> --agent-token <agent_...> --connection-id <conn_...>
 
 Options:
@@ -76,18 +76,17 @@ Options:
   --api-key <key>             Legacy DataMCP API key for older tunnels.
   --agent-token <token>       Agent token for a claimed tunnel.
   --connection-id <id>        DataMCP tunnel connection id.
-  --stage <stage>             qa, production, or development (default: production).
   ro                          Enforce a local read-only ceiling for all queries.
   DATAMCP_READ_ONLY=true      Enforce the same ceiling in Docker or Kubernetes.
-  --cloud-url <url>           DataMCP cloud URL. Default: wss://api.datamcp.app.
-  --agent-name <name>         Friendly name shown in DataMCP.
-  --log-level <level>         debug, info, warn, or error. Default: info.
-  --port <port>               Local health port. Default: 3000.
+  --cloud-url <url>           Optional override. Default: wss://api.datamcp.app.
+  --agent-name <name>         Optional display name. Defaults to machine hostname.
+  --log-level <level>         Optional: debug, info, warn, or error. Default: info.
+  --port <port>               Optional local health port. Default: 3000.
   --help                      Show this help.
   --version                   Show version.
 
 Examples:
-  npx @datamcp/agent ro "$DATABASE_URL" --stage qa --connection-id "$DATAMCP_CONNECTION_ID"
+  DATAMCP_AGENT_TOKEN="$DATAMCP_AGENT_TOKEN" npx @datamcp/agent ro "$DATABASE_URL" --connection-id "$DATAMCP_CONNECTION_ID"
   datamcp-agent --db "$DATABASE_URL" --agent-token "$DATAMCP_AGENT_TOKEN" --connection-id "$DATAMCP_CONNECTION_ID"
 `);
 }
