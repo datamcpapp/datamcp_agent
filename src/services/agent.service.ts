@@ -1,4 +1,4 @@
-import { io, Socket } from 'socket.io-client';
+import { io, Socket } from "socket.io-client";
 import {
   AgentConfig,
   QueryRequest,
@@ -6,11 +6,14 @@ import {
   SchemaRequest,
   HealthCheckRequest,
   HeartbeatData,
-} from '../types';
-import { logger } from '../utils/logger';
-import { DatabaseService } from './database.service';
-import * as os from 'os';
-import { VERSION } from '../version';
+} from "../types";
+import { logger } from "../utils/logger";
+import { DatabaseService } from "./database.service";
+import * as os from "os";
+import { VERSION } from "../version";
+import { healthTargetFingerprint } from "./health-target";
+import { HealthDatabaseExecutor } from "./health-database-executor";
+import type { HealthQueryRequest } from "./health-execution-manager";
 
 const QUERY_HISTORY_TTL_MS = 11 * 60_000;
 
@@ -39,13 +42,17 @@ export class AgentService {
   private authenticationRejected = false;
   private agentId: string | null = null;
 
+  private readonly healthExecutor: HealthDatabaseExecutor;
+
   constructor(
     private config: AgentConfig,
     private databaseService: DatabaseService,
-  ) {}
+  ) {
+    this.healthExecutor = new HealthDatabaseExecutor(config.databaseUrl);
+  }
 
   start(): void {
-    logger.info('Starting DataMCP Agent', {
+    logger.info("Starting DataMCP Agent", {
       name: this.config.agentName,
       cloudUrl: this.config.cloudUrl,
       connectionId: this.config.connectionId,
@@ -56,20 +63,21 @@ export class AgentService {
   private connect(): void {
     if (this.isShuttingDown) return;
 
-    logger.info('Connecting to DataMCP cloud...');
-    const auth: Record<string, string> = {
+    logger.info("Connecting to DataMCP cloud...");
+    const auth: Record<string, unknown> = {
       connectionId: this.config.connectionId,
       agentVersion: VERSION,
       hostname: os.hostname(),
+      capabilities: this.healthCapabilities(),
     };
     if (this.config.agentToken) auth.agentToken = this.config.agentToken;
     else if (this.config.apiKey) auth.apiKey = this.config.apiKey;
 
     // socket.io: namespace is part of the URL ('/agents'), not the `path` option.
     // `path` is the HTTP endpoint (default '/socket.io') — leaving it default.
-    const namespacedUrl = this.config.cloudUrl.replace(/\/+$/, '') + '/agents';
+    const namespacedUrl = this.config.cloudUrl.replace(/\/+$/, "") + "/agents";
     this.socket = io(namespacedUrl, {
-      transports: ['websocket', 'polling'],
+      transports: ["websocket", "polling"],
       auth,
       reconnection: true,
       reconnectionDelay: this.reconnectDelay,
@@ -83,47 +91,78 @@ export class AgentService {
   private setupEventHandlers(): void {
     if (!this.socket) return;
 
-    this.socket.on('connected', (data: { connectionId?: string; agentId?: string }) => {
-      this.agentId = data.agentId ?? null;
-      this.reconnectAttempts = 0;
-      this.isAuthenticated = true;
-      this.authenticationRejected = false;
-      logger.info('Connected to DataMCP cloud', { agentId: this.agentId });
-      this.startHeartbeat();
-      for (const { result } of this.pendingQueryResults.values()) {
-        this.socket?.emit('query_result', result);
-      }
-    });
+    this.socket.on(
+      "connected",
+      (data: { connectionId?: string; agentId?: string }) => {
+        this.agentId = data.agentId ?? null;
+        this.reconnectAttempts = 0;
+        this.isAuthenticated = true;
+        this.authenticationRejected = false;
+        logger.info("Connected to DataMCP cloud", { agentId: this.agentId });
+        this.startHeartbeat();
+        for (const { result } of this.pendingQueryResults.values()) {
+          this.socket?.emit("query_result", result);
+        }
+      },
+    );
 
-    this.socket.on('connect_error', (error: Error) => {
+    this.socket.on("connect_error", (error: Error) => {
       this.reconnectAttempts++;
-      logger.error('Connection error', {
+      logger.error("Connection error", {
         error: error.message,
         attempt: this.reconnectAttempts,
       });
     });
 
-    this.socket.on('disconnect', (reason: string) => {
-      logger.warn('Disconnected from DataMCP cloud', { reason });
+    this.socket.on("disconnect", (reason: string) => {
+      logger.warn("Disconnected from DataMCP cloud", { reason });
       this.isAuthenticated = false;
       this.stopHeartbeat();
-      if (reason === 'io server disconnect' && !this.authenticationRejected) {
-        logger.info('Attempting to reconnect...');
+      if (reason === "io server disconnect" && !this.authenticationRejected) {
+        logger.info("Attempting to reconnect...");
         this.socket?.connect();
       }
     });
 
-    this.socket.on('error', (error: { message: string }) => {
-      logger.error('WebSocket error', { error: error.message });
-      if (error.message === 'invalid agent token') {
+    this.socket.on("error", (error: { message: string }) => {
+      logger.error("WebSocket error", { error: error.message });
+      if (error.message === "invalid agent token") {
         this.authenticationRejected = true;
-        logger.error('Agent token rejected. Update the tunnel credentials and restart the agent.');
+        logger.error(
+          "Agent token rejected. Update the tunnel credentials and restart the agent.",
+        );
         this.socket?.disconnect();
       }
     });
 
-    this.socket.on('execute_query', (request: QueryRequest) => {
-      logger.info('Received query execution request', { queryId: request.queryId });
+    this.socket.on("cancel_query", (request: { queryId?: string }) => {
+      if (
+        typeof request?.queryId === "string" &&
+        request.queryId.length <= 128
+      ) {
+        void this.healthExecutor
+          .cancel(request.queryId)
+          .then((result) => this.sendQueryResult(result));
+      }
+    });
+
+    this.socket.on("execute_query", (request: QueryRequest) => {
+      if (request.executionContext === "postgres-health") {
+        void this.healthExecutor
+          .execute(request as HealthQueryRequest)
+          .then((result) => {
+            this.pendingQueryResults.set(request.queryId, {
+              result,
+              createdAt: Date.now(),
+            });
+            this.pruneQueryHistory();
+            this.sendQueryResult(result);
+          });
+        return;
+      }
+      logger.info("Received query execution request", {
+        queryId: request.queryId,
+      });
       this.pruneQueryHistory();
       const cached = this.pendingQueryResults.get(request.queryId);
       if (cached) {
@@ -135,7 +174,7 @@ export class AgentService {
         this.sendQueryResult({
           queryId: request.queryId,
           success: false,
-          error: 'Query was already executed; result is no longer available',
+          error: "Query was already executed; result is no longer available",
           duration: 0,
         });
         return;
@@ -149,7 +188,7 @@ export class AgentService {
           result = {
             queryId: request.queryId,
             success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
+            error: error instanceof Error ? error.message : "Unknown error",
             duration: 0,
           };
         }
@@ -164,37 +203,39 @@ export class AgentService {
       })();
     });
 
-    this.socket.on('query_ack', (message: { queryId?: string }) => {
+    this.socket.on("query_ack", (message: { queryId?: string }) => {
       if (message?.queryId) this.pendingQueryResults.delete(message.queryId);
     });
 
-    this.socket.on('extract_schema', (request: SchemaRequest) => {
-      logger.info('Received schema extraction request', { requestId: request.requestId });
+    this.socket.on("extract_schema", (request: SchemaRequest) => {
+      logger.info("Received schema extraction request", {
+        requestId: request.requestId,
+      });
       void (async () => {
         try {
           const result = await this.databaseService.extractSchema(request);
-          this.socket?.emit('schema_result', result);
+          this.socket?.emit("schema_result", result);
         } catch (error) {
-          this.socket?.emit('schema_result', {
+          this.socket?.emit("schema_result", {
             requestId: request.requestId,
             success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
+            error: error instanceof Error ? error.message : "Unknown error",
             duration: 0,
           });
         }
       })();
     });
 
-    this.socket.on('health_check', (request: HealthCheckRequest) => {
+    this.socket.on("health_check", (request: HealthCheckRequest) => {
       void (async () => {
         try {
           const result = await this.databaseService.checkHealth(request);
-          this.socket?.emit('health_check_result', result);
+          this.socket?.emit("health_check_result", result);
         } catch (error) {
-          this.socket?.emit('health_check_result', {
+          this.socket?.emit("health_check_result", {
             requestId: request.requestId,
             success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
+            error: error instanceof Error ? error.message : "Unknown error",
           });
         }
       })();
@@ -219,8 +260,18 @@ export class AgentService {
 
   private sendHeartbeat(): void {
     if (!this.socket?.connected) return;
+    void this.healthExecutor.reconcileUncertain().then((results) => {
+      for (const result of results) {
+        this.pendingQueryResults.set(result.queryId, {
+          result,
+          createdAt: Date.now(),
+        });
+        this.sendQueryResult(result);
+      }
+    });
     const heartbeat: HeartbeatData = {
       version: VERSION,
+      capabilities: this.healthCapabilities(),
       metadata: {
         hostname: os.hostname(),
         platform: os.platform(),
@@ -228,12 +279,22 @@ export class AgentService {
         uptime: process.uptime(),
       },
     };
-    this.socket.emit('heartbeat', heartbeat);
+    this.socket.emit("heartbeat", heartbeat);
+  }
+
+  private healthCapabilities() {
+    return {
+      readOnlyRequestV1: true,
+      healthExecutionV1: true,
+      healthActiveQueryId: this.healthExecutor.activeQueryId,
+      clockAt: Date.now(),
+      targetFingerprint: healthTargetFingerprint(this.config.databaseUrl),
+    };
   }
 
   private sendQueryResult(result: QueryResult): void {
     if (this.isAuthenticated && this.socket?.connected) {
-      this.socket.emit('query_result', result);
+      this.socket.emit("query_result", result);
     }
   }
 
@@ -246,7 +307,7 @@ export class AgentService {
       const oldest = this.pendingQueryResults.keys().next().value;
       if (!oldest) break;
       this.pendingQueryResults.delete(oldest);
-      logger.warn('Unacknowledged query result evicted', { queryId: oldest });
+      logger.warn("Unacknowledged query result evicted", { queryId: oldest });
     }
     for (const [queryId, createdAt] of this.completedQueryIds) {
       if (createdAt < cutoff) this.completedQueryIds.delete(queryId);
@@ -262,14 +323,15 @@ export class AgentService {
     if (this.isShuttingDown) return;
     this.isShuttingDown = true;
     this.isAuthenticated = false;
-    logger.info('Stopping DataMCP Agent...');
+    logger.info("Stopping DataMCP Agent...");
     this.stopHeartbeat();
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
     }
+    await this.healthExecutor.close();
     await this.databaseService.closeAll();
-    logger.info('Agent stopped');
+    logger.info("Agent stopped");
   }
 
   isConnected(): boolean {
