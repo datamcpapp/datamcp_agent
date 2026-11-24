@@ -10,7 +10,7 @@ export interface AgentConfig {
   cloudUrl: string;
   agentName: string;
   heartbeatInterval: number;
-  logLevel: 'debug' | 'info' | 'warn' | 'error';
+  logLevel: "debug" | "info" | "warn" | "error";
   port: number;
   readOnlyCeiling: boolean;
 }
@@ -26,6 +26,9 @@ export interface QueryRequest {
   timeoutMs: number;
   readOnly?: boolean;
   maxRows?: number;
+  executionContext?: "postgres-health";
+  issuedAt?: number;
+  deadlineAt?: number;
 }
 
 export interface QueryResult {
@@ -37,6 +40,7 @@ export interface QueryResult {
   truncated?: boolean;
   error?: string;
   duration: number;
+  terminalState?: "completed" | "cancelled" | "failed" | "busy" | "uncertain";
 }
 
 export interface SchemaRequest {
@@ -104,6 +108,13 @@ export interface HealthCheckResult {
 }
 
 export interface HeartbeatData {
+  capabilities?: {
+    readOnlyRequestV1: boolean;
+    healthExecutionV1: boolean;
+    healthActiveQueryId: string | null;
+    clockAt: number;
+    targetFingerprint: string;
+  };
   version: string;
   metadata: {
     hostname: string;
