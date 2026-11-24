@@ -82,6 +82,7 @@ export class HealthDatabaseExecutor {
           ),
         );
         await client.query(`SET LOCAL statement_timeout = ${timeoutMs}`);
+        await client.query("SET LOCAL lock_timeout = 250");
         await client.query("SET LOCAL search_path = pg_catalog");
         await client.query(
           "SET LOCAL idle_in_transaction_session_timeout = 5000",

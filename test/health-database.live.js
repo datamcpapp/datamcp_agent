@@ -210,3 +210,37 @@ test("a silent TCP blackhole returns uncertain and keeps overlap blocked within 
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test("uses a short lock-wait ceiling inside every read-only Health transaction", async () => {
+  const result = await executor.execute(
+    request(
+      "select current_setting('transaction_read_only') as read_only, current_setting('lock_timeout') as lock_wait",
+    ),
+  );
+  assert.equal(result.success, true);
+  assert.equal(result.rows[0].read_only, "on");
+  assert.equal(result.rows[0].lock_wait, "250ms");
+});
+
+test("abandons a blocked catalog size read quickly and leaves the next observation usable", async () => {
+  await admin.query("BEGIN");
+  try {
+    await admin.query(
+      "LOCK TABLE public.health_write_probe IN ACCESS EXCLUSIVE MODE",
+    );
+    const started = performance.now();
+    const blocked = await executor.execute(
+      request(
+        "select pg_total_relation_size('public.health_write_probe'::regclass) as bytes",
+        { timeoutMs: 3000 },
+      ),
+    );
+    assert.equal(blocked.success, false);
+    assert.ok(performance.now() - started < 1500);
+  } finally {
+    await admin.query("ROLLBACK");
+  }
+  const next = await executor.execute(request("select 42 as answer"));
+  assert.equal(next.success, true);
+  assert.equal(next.rows[0].answer, 42);
+});
